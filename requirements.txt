@@ -1,0 +1,6 @@
+flask==3.0.3
+psycopg2-binary==2.9.9
+Werkzeug==3.0.3
+itsdangerous==2.1.2
+Jinja2==3.1.4
+click==8.1.7
