@@ -1,139 +1,142 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>DW Dashboard</title>
+  <head>
+    <title>DW Sales Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link
-        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-        rel="stylesheet">
-</head>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
 
-<body class="bg-light">
+  <body class="bg-gray-100">
+    <div class="p-6">
+      <h1 class="text-3xl font-bold mb-6">DW Sales Dashboard</h1>
 
-<div class="container py-4">
-
-    <h1 class="mb-4 text-center">Retail DW Dashboard</h1>
-
-    <!-- KPI Row -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="p-3 bg-white rounded shadow">
-                <h4>Total Sales</h4>
-                <h2 class="text-success">Rp {{ "{:,.0f}".format(total_sales) }}</h2>
-            </div>
+      <!-- KPI -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white p-6 rounded-xl shadow">
+          <p class="text-gray-500 text-sm">Total Sales</p>
+          <p class="text-2xl font-semibold">{{ total_sales }}</p>
         </div>
-        <div class="col-md-6">
-            <div class="p-3 bg-white rounded shadow">
-                <h4>Total Quantity</h4>
-                <h2 class="text-primary">{{ total_qty }}</h2>
-            </div>
+        <div class="bg-white p-6 rounded-xl shadow">
+          <p class="text-gray-500 text-sm">Total Quantity</p>
+          <p class="text-2xl font-semibold">{{ total_qty }}</p>
         </div>
+        <div class="bg-white p-6 rounded-xl shadow">
+          <p class="text-gray-500 text-sm">Total Transactions</p>
+          <p class="text-2xl font-semibold">{{ total_trx }}</p>
+        </div>
+      </div>
+
+      <!-- CHART GRID -->
+      <div class="grid grid-cols-3 gap-6">
+        <!-- Product Basket -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Frequently Bought Together</h4>
+          <canvas id="basketChart"></canvas>
+        </div>
+
+        <!-- Payment Summary -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Payment Summary</h4>
+          <canvas id="paymentChart"></canvas>
+        </div>
+
+        <!-- Top Products -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Top 5 Products</h4>
+          <canvas id="topProductChart"></canvas>
+        </div>
+
+        <!-- Sales by Category -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Sales by Category</h4>
+          <canvas id="categoryChart"></canvas>
+        </div>
+
+        <!-- Daily Sales (span 2 columns) -->
+        <div class="bg-white p-6 rounded-xl shadow col-span-2">
+          <h4 class="font-semibold mb-3">Daily Sales</h4>
+          <canvas id="dailyChart"></canvas>
+        </div>
+      </div>
     </div>
+    <script>
+      // ================= Daily Sales =====================
+      const dailyLabels = {{ daily | map(attribute=0) | list | tojson }};
+      const dailyValues = {{ daily | map(attribute=1) | list | tojson }};
 
-    <!-- Daily sales -->
-    <div class="bg-white p-4 rounded shadow mb-4">
-        <h4>Daily Sales</h4>
-        <canvas id="dailyChart"></canvas>
-    </div>
+      new Chart(document.getElementById("dailyChart"), {
+          type: "line",
+          data: {
+              labels: dailyLabels,
+              datasets: [{
+                  label: "Daily Sales",
+                  data: dailyValues,
+                  borderWidth: 2,
+                  borderColor: "#0984e3",
+                  backgroundColor: "rgba(9,132,227,0.2)",
+                  tension: 0.3,
+              }]
+          }
+      });
 
-    <!-- Payment Summary -->
-    <div class="bg-white p-4 rounded shadow mb-4">
-        <h4>Payment Summary</h4>
-        <canvas id="paymentChart"></canvas>
-    </div>
+      // ================= Payment Summary =================
+      const paymentLabels = {{ payment | map(attribute=0) | list | tojson }};
+      const paymentValues = {{ payment | map(attribute=1) | list | tojson }};
 
-    <!-- Top products -->
-    <div class="bg-white p-4 rounded shadow mb-4">
-        <h4>Top 5 Products</h4>
-        <canvas id="topProductChart"></canvas>
-    </div>
+      new Chart(document.getElementById("paymentChart"), {
+          type: "bar",
+          data: {
+              labels: paymentLabels,
+              datasets: [{
+                  label: "Sales by Payment",
+                  data: paymentValues
+              }]
+          }
+      });
 
-    <!-- Sales by category -->
-    <div class="bg-white p-4 rounded shadow mb-4">
-        <h4>Sales by Category</h4>
-        <canvas id="categoryChart"></canvas>
-    </div>
+      // ================= Top Products ====================
+      const topLabels = {{ top_products | map(attribute=0) | list | tojson }};
+      const topValues = {{ top_products | map(attribute=1) | list | tojson }};
 
-    <!-- Product basket frequency -->
-    <div class="bg-white p-4 rounded shadow mb-5">
-        <h4>Most Frequently Bought Products</h4>
-        <canvas id="basketChart"></canvas>
-    </div>
+      new Chart(document.getElementById("topProductChart"), {
+          type: "bar",
+          data: {
+              labels: topLabels,
+              datasets: [{
+                  label: "Top Selling Products",
+                  data: topValues
+              }]
+          }
+      });
 
-</div>
+      // ================= Category Sales ==================
+      const categoryLabels = {{ sales_by_category | map(attribute=0) | list | tojson }};
+      const categoryValues = {{ sales_by_category | map(attribute=1) | list | tojson }};
 
-<script>
-    /* ---------------- Daily Sales ---------------- */
-    const daily = {{ daily | tojson }};
-    const dailyLabels = daily.map(x => x[0]);
-    const dailyValues = daily.map(x => x[1]);
+      new Chart(document.getElementById("categoryChart"), {
+          type: "pie",
+          data: {
+              labels: categoryLabels,
+              datasets: [{
+                  data: categoryValues
+              }]
+          }
+      });
 
-    new Chart(document.getElementById("dailyChart"), {
-        type: "line",
-        data: {
-            labels: dailyLabels,
-            datasets: [{
-                label: "Daily Sales",
-                data: dailyValues,
-                borderColor: "#0d6efd",
-                fill: false,
-                tension: 0.3
-            }]
-        }
-    });
+      // ================= Basket Frequency ================
+      const basketLabels = {{ basket_freq | map(attribute=0) | list | tojson }};
+      const basketValues = {{ basket_freq | map(attribute=1) | list | tojson }};
 
-    /* ---------------- Payment Summary ---------------- */
-    const payment = {{ payment | tojson }};
-    new Chart(document.getElementById("paymentChart"), {
-        type: "pie",
-        data: {
-            labels: payment.map(x => x[0]),
-            datasets: [{
-                data: payment.map(x => x[1])
-            }]
-        }
-    });
-
-    /* ---------------- Top Products ---------------- */
-    const topProducts = {{ top_products | tojson }};
-    new Chart(document.getElementById("topProductChart"), {
-        type: "bar",
-        data: {
-            labels: topProducts.map(x => x[0]),
-            datasets: [{
-                label: "Sales",
-                data: topProducts.map(x => x[1]),
-                backgroundColor: "#6c5ce7"
-            }]
-        }
-    });
-
-    /* ---------------- Sales by Category ---------------- */
-    const cat = {{ sales_by_category | tojson }};
-    new Chart(document.getElementById("categoryChart"), {
-        type: "doughnut",
-        data: {
-            labels: cat.map(x => x[0]),
-            datasets: [{
-                data: cat.map(x => x[1])
-            }]
-        }
-    });
-
-    /* ---------------- Basket Frequency ---------------- */
-    const basket = {{ basket_freq | tojson }};
-    new Chart(document.getElementById("basketChart"), {
-        type: "bar",
-        data: {
-            labels: basket.map(x => x[0]),
-            datasets: [{
-                label: "Frequency",
-                data: basket.map(x => x[1]),
-                backgroundColor: "#00b894"
-            }]
-        }
-    });
-</script>
-
-</body>
+      new Chart(document.getElementById("basketChart"), {
+          type: "bar",
+          data: {
+              labels: basketLabels,
+              datasets: [{
+                  label: "Basket Frequency",
+                  data: basketValues
+              }]
+          }
+      });
+    </script>
+  </body>
 </html>

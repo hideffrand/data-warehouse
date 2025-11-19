@@ -23,6 +23,9 @@ def dashboard():
     cur.execute("SELECT SUM(quantity) FROM fact_sales")
     total_qty = cur.fetchone()[0]
 
+    cur.execute("SELECT COUNT(*) FROM fact_sales")
+    total_trx = cur.fetchone()[0]
+
     # ============ NEW QUERIES ============
 
     # 1. Top 5 Products
@@ -61,8 +64,16 @@ def dashboard():
 
     conn.close()
 
+    print("DAILY =", daily)
+    print("PAYMENT =", payment)
+    print("TOP =", top_products)
+    print("CATEGORY =", sales_by_category)
+    print("BASKET =", basket_freq)
+
+
     return render_template(
         "index.html",
+        total_trx=total_trx,
         daily=daily,
         payment=payment,
         total_sales=total_sales,
