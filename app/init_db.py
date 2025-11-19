@@ -87,7 +87,7 @@ def init_database():
     # Generate tanggal otomatis
     from datetime import date, timedelta
 
-    start = date(2025, 11, 1)
+    start = date(2025, 10, 1)
     end = date(2025, 11, 30)
 
     dates = []
@@ -206,7 +206,7 @@ def init_database():
     for dkey, full_date, *_ in dates:
 
         # setiap tanggal ada 5–15 transaksi
-        for _ in range(random.randint(5, 15)):
+        for _ in range(random.randint(100, 120)):
 
             transaction_id = f"TX{transaction_counter:04d}"
             transaction_counter += 1
