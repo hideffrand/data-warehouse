@@ -1,3 +1,5 @@
+import random
+from datetime import date, timedelta
 import psycopg2
 
 DB_CONFIG = {
@@ -14,14 +16,25 @@ def init_database():
     cur = conn.cursor()
 
     # ======================================================
-    # DROP TABLES
+    # DROP TABLES (drop in order to avoid FK issues)
     # ======================================================
     print("Dropping existing tables...")
     cur.execute("""
-        DROP TABLE IF EXISTS fact_promotion CASCADE;     -- NEW
-        DROP TABLE IF EXISTS dim_promotion CASCADE;       -- NEW
+        DROP TABLE IF EXISTS fact_inventory_balance CASCADE;
+        DROP TABLE IF EXISTS fact_inventory_movement CASCADE;
+        DROP TABLE IF EXISTS fact_daily_inventory_snapshot CASCADE;
+
+        DROP TABLE IF EXISTS fact_promotion CASCADE;
+        DROP TABLE IF EXISTS dim_promotion CASCADE;
 
         DROP TABLE IF EXISTS fact_sales CASCADE;
+        DROP TABLE IF EXISTS fact_product_avg_price CASCADE;
+        DROP TABLE IF EXISTS fact_product_frequency CASCADE;
+        DROP TABLE IF EXISTS fact_product_store CASCADE;
+        DROP TABLE IF EXISTS fact_product_daily CASCADE;
+        DROP TABLE IF EXISTS fact_product_sales CASCADE;
+
+        DROP TABLE IF EXISTS dim_warehouse CASCADE;
         DROP TABLE IF EXISTS dim_date CASCADE;
         DROP TABLE IF EXISTS dim_store CASCADE;
         DROP TABLE IF EXISTS dim_product CASCADE;
@@ -70,9 +83,6 @@ def init_database():
             payment_type VARCHAR(50)
         );
 
-        --------------------------------------------------------
-        -- NEW: DIM PROMOTION
-        --------------------------------------------------------
         CREATE TABLE dim_promotion (
             promotion_key SERIAL PRIMARY KEY,
             promotion_name VARCHAR(200),
@@ -81,12 +91,20 @@ def init_database():
             start_date DATE,
             end_date DATE
         );
+
+        CREATE TABLE dim_warehouse (
+            warehouse_key SERIAL PRIMARY KEY,
+            warehouse_name VARCHAR(200),
+            city VARCHAR(100),
+            region VARCHAR(100),
+            capacity INT
+        );
     """)
 
     # ======================================================
     # CREATE FACTS
     # ======================================================
-    print("Creating fact table...")
+    print("Creating fact table(s)...")
     cur.execute("""
         CREATE TABLE fact_sales (
             sales_key SERIAL PRIMARY KEY,
@@ -95,12 +113,7 @@ def init_database():
             store_key INT REFERENCES dim_store(store_key),
             customer_key INT REFERENCES dim_customer(customer_key),
             payment_method_key INT REFERENCES dim_payment_method(payment_method_key),
-
-            --------------------------------------------------------
-            -- NEW: ADD PROMOTION REFERENCE
-            --------------------------------------------------------
             promotion_key INT REFERENCES dim_promotion(promotion_key),
-
             transaction_id VARCHAR(50),
             quantity INT,
             unit_price NUMERIC(12,2),
@@ -108,13 +121,41 @@ def init_database():
             discount_amount NUMERIC(12,2)
         );
 
-        --------------------------------------------------------
-        -- NEW: FACTLESS FACT PROMOTION EVENT
-        --------------------------------------------------------
         CREATE TABLE fact_promotion (
             promotion_key INT REFERENCES dim_promotion(promotion_key),
             date_key INT REFERENCES dim_date(date_key),
             store_key INT REFERENCES dim_store(store_key)
+        );
+
+        -- Snapshot fact: daily inventory snapshot per warehouse/product/date
+        CREATE TABLE fact_daily_inventory_snapshot (
+            snapshot_key SERIAL PRIMARY KEY,
+            date_key INT REFERENCES dim_date(date_key),
+            warehouse_key INT REFERENCES dim_warehouse(warehouse_key),
+            product_key INT REFERENCES dim_product(product_key),
+            on_hand_qty INT,
+            reserved_qty INT,
+            inbound_qty INT
+        );
+
+        -- Accumulation fact: inventory movement events
+        CREATE TABLE fact_inventory_movement (
+            movement_key SERIAL PRIMARY KEY,
+            movement_type VARCHAR(50),   -- IN, OUT, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT
+            date_key INT REFERENCES dim_date(date_key),
+            warehouse_key INT REFERENCES dim_warehouse(warehouse_key),
+            product_key INT REFERENCES dim_product(product_key),
+            quantity INT,
+            remarks TEXT
+        );
+
+        -- Semi-additive fact: current balance per warehouse/product (snapshot of latest)
+        CREATE TABLE fact_inventory_balance (
+            warehouse_key INT REFERENCES dim_warehouse(warehouse_key),
+            product_key INT REFERENCES dim_product(product_key),
+            ending_balance INT,
+            last_updated TIMESTAMP,
+            PRIMARY KEY (warehouse_key, product_key)
         );
     """)
 
@@ -122,7 +163,6 @@ def init_database():
     # SEED DIM DATE
     # ======================================================
     print("Seeding dim_date...")
-    from datetime import date, timedelta
     start = date(2025, 10, 1)
     end = date(2025, 11, 30)
 
@@ -135,9 +175,9 @@ def init_database():
         current += timedelta(days=1)
 
     cur.executemany("""
-        INSERT INTO dim_date 
+        INSERT INTO dim_date
         (date_key, full_date, year, month, day, day_name, month_name)
-        VALUES (%s, %s, %s, %s, %s, %s, %s);
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, dates)
 
     # ======================================================
@@ -158,7 +198,7 @@ def init_database():
     ]
     cur.executemany("""
         INSERT INTO dim_store (store_name, city, region)
-        VALUES (%s, %s, %s);
+        VALUES (%s, %s, %s)
     """, stores)
 
     # ======================================================
@@ -189,15 +229,13 @@ def init_database():
     ]
     cur.executemany("""
         INSERT INTO dim_product (product_name, category, brand)
-        VALUES (%s, %s, %s);
+        VALUES (%s, %s, %s)
     """, products)
 
     # ======================================================
     # SEED DIM CUSTOMER
     # ======================================================
     print("Seeding dim_customer...")
-    import random
-
     customers = []
     male_names = ["Budi", "Agus", "Doni", "Rangga",
                   "Rudi", "Kevin", "Andre", "Rizky"]
@@ -217,7 +255,7 @@ def init_database():
 
     cur.executemany("""
         INSERT INTO dim_customer (customer_name, gender, age)
-        VALUES (%s, %s, %s);
+        VALUES (%s, %s, %s)
     """, customers)
 
     # ======================================================
@@ -233,11 +271,11 @@ def init_database():
     ]
     cur.executemany("""
         INSERT INTO dim_payment_method (payment_type)
-        VALUES (%s);
+        VALUES (%s)
     """, payment_methods)
 
     # ======================================================
-    # NEW: SEED DIM PROMOTION
+    # SEED DIM PROMOTION
     # ======================================================
     print("Seeding dim_promotion...")
     promotions = [
@@ -248,14 +286,13 @@ def init_database():
     ]
     cur.executemany("""
         INSERT INTO dim_promotion (promotion_name, promotion_type, discount_percent, start_date, end_date)
-        VALUES (%s, %s, %s, %s, %s);
+        VALUES (%s, %s, %s, %s, %s)
     """, promotions)
 
     # ======================================================
-    # NEW: SEED FACTLESS FACT PROMOTION
+    # SEED FACTLESS FACT PROMOTION
     # ======================================================
     print("Seeding fact_promotion...")
-
     fact_promo_rows = []
     for promo_id, (_, _, _, start, end) in enumerate(promotions, start=1):
         for dkey, full_date, *_ in dates:
@@ -266,14 +303,13 @@ def init_database():
 
     cur.executemany("""
         INSERT INTO fact_promotion (promotion_key, date_key, store_key)
-        VALUES (%s, %s, %s);
+        VALUES (%s, %s, %s)
     """, fact_promo_rows)
 
     # ======================================================
     # SEED FACT SALES
     # ======================================================
     print("Seeding fact_sales...")
-
     fact_rows = []
     transaction_counter = 1
 
@@ -317,12 +353,91 @@ def init_database():
         INSERT INTO fact_sales 
         (date_key, product_key, store_key, customer_key, payment_method_key,
          promotion_key, transaction_id, quantity, unit_price, sales_amount, discount_amount)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, fact_rows)
+
+    print("Seeding dim_warehouse...")
+    cur.execute("""
+        INSERT INTO dim_warehouse (warehouse_name, city, region, capacity)
+        VALUES 
+        ('Gudang Pusat Jakarta', 'Jakarta', 'Jawa Barat', 50000),
+        ('Gudang Surabaya', 'Surabaya', 'Jawa Timur', 45000),
+        ('Gudang Bandung', 'Bandung', 'Jawa Barat', 30000),
+        ('Gudang Medan', 'Medan', 'Sumatera Utara', 25000)
+    """)
+
+    print("Seeding fact_daily_inventory_snapshot...")
+    snapshot_records = []
+
+    snapshot_start = date(2025, 10, 1)
+    snapshot_end = date(2025, 11, 30)
+
+    current = snapshot_start
+
+    while current <= snapshot_end:
+        date_key = int(current.strftime("%Y%m%d"))
+
+        for product_key in range(1, 21):  # 20 produk
+            warehouse_key = random.randint(1, 4)
+
+            on_hand = random.randint(50, 300)
+            reserved = random.randint(0, 20)
+            inbound = random.randint(0, 50)
+
+            snapshot_records.append(
+                (date_key, warehouse_key, product_key, on_hand, reserved, inbound))
+
+        current += timedelta(days=1)
+
+    cur.executemany("""
+        INSERT INTO fact_daily_inventory_snapshot
+        (date_key, warehouse_key, product_key, on_hand_qty, reserved_qty, inbound_qty)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, snapshot_records)
+
+    print("Seeding fact_inventory_movement...")
+    movement_types = ["IN", "OUT", "TRANSFER_IN", "TRANSFER_OUT", "ADJUSTMENT"]
+    for _ in range(800):  # 800 movement events
+        dt = snapshot_start + \
+            timedelta(days=random.randint(
+                0, (snapshot_end - snapshot_start).days))
+        date_key = int(dt.strftime("%Y%m%d"))
+
+        cur.execute("""
+            INSERT INTO fact_inventory_movement
+                (movement_type, date_key, warehouse_key, product_key, quantity, remarks)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            random.choice(movement_types),
+            date_key,
+            random.randint(1, 4),   # warehouse
+            random.randint(1, 20),  # product
+            random.randint(1, 200),
+            "auto-generated"
+        ))
+
+    print("Seeding fact_inventory_balance...")
+    last_date_key = int(snapshot_end.strftime("%Y%m%d"))
+    cur.execute("""
+        SELECT warehouse_key, product_key, on_hand_qty
+        FROM fact_daily_inventory_snapshot
+        WHERE date_key = %s
+    """, (last_date_key,))
+
+    rows = cur.fetchall()
+
+    for w_key, p_key, balance in rows:
+        cur.execute("""
+            INSERT INTO fact_inventory_balance
+                (warehouse_key, product_key, ending_balance, last_updated)
+            VALUES (%s, %s, %s, NOW())
+        """, (w_key, p_key, balance))
 
     print("SEED DONE!")
 
-
+    # ======================================================
+    # CREATE VIEWS
+    # ======================================================
     print("Creating views...")
     cur.execute("""
         CREATE OR REPLACE VIEW vw_daily_sales AS

@@ -204,5 +204,57 @@ def snapshot():
     )
 
 
+@app.route("/warehouse")
+def warehouse():
+    return render_template("warehouse.html")
+
+
+@app.route("/warehouse/data")
+def warehouse_data():
+    limit = int(request.args.get("limit", 25))
+    conn = get_db()
+    cur = conn.cursor()
+
+    tables = {}
+
+    # Snapshot Fact
+    cur.execute(f"""
+        SELECT date_key, warehouse_key, product_key, on_hand_qty, reserved_qty, inbound_qty
+        FROM fact_daily_inventory_snapshot
+        ORDER BY date_key DESC
+        LIMIT {limit};
+    """)
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    tables["Daily Inventory Snapshot"] = {"columns": columns, "rows": rows}
+
+    # Accumulation Fact
+    cur.execute(f"""
+        SELECT movement_type, date_key, warehouse_key, product_key, quantity, remarks
+        FROM fact_inventory_movement
+        ORDER BY date_key DESC
+        LIMIT {limit};
+    """)
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    tables["Inventory Movement (Accumulation Fact)"] = {
+        "columns": columns, "rows": rows}
+
+    # Semi-additive Fact
+    cur.execute(f"""
+        SELECT warehouse_key, product_key, ending_balance, last_updated
+        FROM fact_inventory_balance
+        ORDER BY last_updated DESC
+        LIMIT {limit};
+    """)
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    tables["Inventory Balance (Semi-additive Fact)"] = {
+        "columns": columns, "rows": rows}
+
+    conn.close()
+    return jsonify(tables)
+
+
 if __name__ == "__main__":
     app.run(debug=True)

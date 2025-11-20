@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Warehouse Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="p-6 bg-gray-50">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">Warehouse Facts</h1>
+      <div class="flex gap-6">
+        <a href="/" class="text-blue-500 hover:underline">Dashboard</a>
+        |
+        <a href="/snapshot" class="text-blue-600 hover:underline">Snapshot</a>
+        |
+        <a href="/facts" class="text-blue-600 hover:underline">Fact Tables</a>
+      </div>
+    </div>
+
+    <div
+      id="warehouseContainer"
+      class="grid grid-cols-1 md:grid-cols-2 gap-6"
+    ></div>
+
+    <script>
+      async function loadWarehouse(limit = 25) {
+        const response = await fetch(`/warehouse/data?limit=${limit}`);
+        const data = await response.json();
+
+        const container = document.getElementById("warehouseContainer");
+        container.innerHTML = "";
+
+        Object.keys(data).forEach((tbl) => {
+          const card = document.createElement("div");
+          card.className = "bg-white p-4 rounded-lg shadow overflow-x-auto";
+
+          // Table title + limit selector
+          const headerDiv = document.createElement("div");
+          headerDiv.className = "flex justify-between items-center mb-2";
+
+          const title = document.createElement("h3");
+          title.className = "font-semibold text-lg";
+          title.innerText = tbl;
+
+          const select = document.createElement("select");
+          select.className = "border rounded px-2 py-1 text-sm";
+          [10, 25, 50, 75].forEach((n) => {
+            const opt = document.createElement("option");
+            opt.value = n;
+            opt.innerText = n;
+            if (n === limit) opt.selected = true;
+            select.appendChild(opt);
+          });
+
+          select.onchange = () => loadWarehouse(parseInt(select.value));
+
+          headerDiv.appendChild(title);
+          headerDiv.appendChild(select);
+          card.appendChild(headerDiv);
+
+          // Table
+          const table = document.createElement("table");
+          table.className = "min-w-full border-collapse border border-gray-200";
+
+          // Table header
+          const thead = document.createElement("thead");
+          const headRow = document.createElement("tr");
+          data[tbl].columns.forEach((col) => {
+            const th = document.createElement("th");
+            th.innerText = col;
+            th.className = "border px-2 py-1 bg-gray-100 text-left";
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+
+          // Table body
+          const tbody = document.createElement("tbody");
+          data[tbl].rows.forEach((row) => {
+            const tr = document.createElement("tr");
+            row.forEach((val) => {
+              const td = document.createElement("td");
+              td.innerText = val;
+              td.className = "border px-2 py-1";
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+
+          card.appendChild(table);
+          container.appendChild(card);
+        });
+      }
+
+      // Load default
+      loadWarehouse();
+    </script>
+  </body>
+</html>
