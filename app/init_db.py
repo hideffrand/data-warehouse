@@ -188,14 +188,15 @@ def init_database():
         ("Indomaret A", "Jakarta", "Jabodetabek"),
         ("Indomaret B", "Bandung", "Jawa Barat"),
         ("Indomaret C", "Surabaya", "Jawa Timur"),
-        ("Alfamart A", "Jakarta", "Jabodetabek"),
-        ("Alfamart B", "Depok", "Jabodetabek"),
-        ("Indomaret D", "Medan", "Sumut"),
-        ("Indomaret E", "Makassar", "Sulsel"),
-        ("Alfamart C", "Surabaya", "Jawa Timur"),
-        ("Alfamart D", "Bandung", "Jawa Barat"),
-        ("Indomaret F", "Bali", "Bali"),
+        ("Indomaret Point D", "Jakarta", "Jabodetabek"),
+        ("Indomaret Fresh E", "Depok", "Jabodetabek"),
+        ("Indomaret F", "Medan", "Sumut"),
+        ("Indomaret G", "Makassar", "Sulsel"),
+        ("Indomaret H", "Surabaya", "Jawa Timur"),
+        ("Indomaret Point I", "Bandung", "Jawa Barat"),
+        ("Indomaret J", "Bali", "Bali"),
     ]
+
     cur.executemany("""
         INSERT INTO dim_store (store_name, city, region)
         VALUES (%s, %s, %s)
