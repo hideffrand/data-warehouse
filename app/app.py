@@ -130,6 +130,35 @@ def dashboard():
         sales_by_region=sales_by_region
     )
 
+@app.route("/snapshot")
+def snapshot():
+    conn = get_db()
+    cur = conn.cursor()
 
+    cur.execute("""
+        SELECT 
+            COUNT(*) AS total_dates,
+            MIN(full_date) AS start_date,
+            MAX(full_date) AS end_date
+        FROM dim_date;
+    """)
+    date_snapshot = cur.fetchone()
+
+    cur.execute("""
+        SELECT 
+            COUNT(*) AS total_stores,
+            COUNT(DISTINCT city) AS unique_cities,
+            COUNT(DISTINCT region) AS unique_regions
+        FROM dim_store;
+    """)
+    store_snapshot = cur.fetchone()
+
+    conn.close()
+
+    return render_template(
+        "snapshot.html",
+        date_snapshot=date_snapshot,
+        store_snapshot=store_snapshot,
+    )
 if __name__ == "__main__":
     app.run(debug=True)

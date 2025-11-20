@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Snapshot Overview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+
+    <div class="max-w-4xl mx-auto space-y-8">
+
+        <!-- Page Title -->
+        <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">
+            Data Warehouse Snapshot Overview
+        </h1>
+
+        <!-- Dimension 1 - Date Snapshot -->
+        <div class="bg-white shadow-lg rounded-lg p-6 border">
+            <h2 class="text-xl font-semibold mb-4 text-blue-700">
+                Dimension 1: Date Snapshot
+            </h2>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="p-4 bg-blue-50 rounded shadow text-center">
+                    <p class="text-lg font-bold">{{ date_snapshot[0] }}</p>
+                    <p class="text-gray-600">Total Date Records</p>
+                </div>
+                <div class="p-4 bg-blue-50 rounded shadow text-center">
+                    <p class="text-lg font-bold">{{ date_snapshot[1] }}</p>
+                    <p class="text-gray-600">Start Date</p>
+                </div>
+                <div class="p-4 bg-blue-50 rounded shadow text-center">
+                    <p class="text-lg font-bold">{{ date_snapshot[2] }}</p>
+                    <p class="text-gray-600">End Date</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dimension 2 - Store Snapshot -->
+        <div class="bg-white shadow-lg rounded-lg p-6 border">
+            <h2 class="text-xl font-semibold mb-4 text-green-700">
+                Dimension 2: Store Snapshot
+            </h2>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="p-4 bg-green-50 rounded shadow text-center">
+                    <p class="text-lg font-bold">{{ store_snapshot[0] }}</p>
+                    <p class="text-gray-600">Total Stores</p>
+                </div>
+                <div class="p-4 bg-green-50 rounded shadow text-center">
+                    <p class="text-lg font-bold">{{ store_snapshot[1] }}</p>
+                    <p class="text-gray-600">Unique Cities</p>
+                </div>
+                <div class="p-4 bg-green-50 rounded shadow text-center">
+                    <p class="text-lg font-bold">{{ store_snapshot[2] }}</p>
+                    <p class="text-gray-600">Unique Regions</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer / Back -->
+        <div class="text-center mt-6">
+            <a href="/" class="text-blue-500 underline">← Back to Home</a>
+        </div>
+
+    </div>
+</body>
+</html>
