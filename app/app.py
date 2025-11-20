@@ -130,10 +130,6 @@ def dashboard():
         sales_by_region=sales_by_region
     )
 
-@app.route("/snapshot")
-def snapshot():
-    conn = get_db()
-    cur = conn.cursor()
 
 @app.get("/facts")
 def facts_page():
@@ -172,6 +168,8 @@ def facts_data():
     conn.close()
 
     return jsonify(results)
+
+
 @app.route("/snapshot")
 def snapshot():
     conn = get_db()
@@ -204,7 +202,6 @@ def snapshot():
         date_snapshot=date_snapshot,
         store_snapshot=store_snapshot,
     )
-
 
 
 if __name__ == "__main__":
