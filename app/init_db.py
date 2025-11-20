@@ -337,8 +337,8 @@ def init_database():
                 promotion_key = random.choice(
                     active_promos) if active_promos else None
 
-                quantity = random.randint(1, 5)
-                unit_price = random.randint(3000, 25000)
+                quantity = random.randint(1, 120)
+                unit_price = random.randint(1000, 35000)
                 amount = quantity * unit_price
 
                 discount_pct = promotions[promotion_key -
