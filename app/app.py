@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from db import get_db
 
 app = Flask(__name__)
@@ -135,6 +135,49 @@ def snapshot():
     conn = get_db()
     cur = conn.cursor()
 
+@app.get("/facts")
+def facts_page():
+    return render_template("facts.html")
+
+
+@app.get("/facts/data")
+def facts_data():
+    limit = request.args.get("limit", 25, type=int)
+
+    fact_tables = [
+        "fact_sales",
+        "fact_promotion"
+    ]
+
+    results = {}
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    for tbl in fact_tables:
+        try:
+            cur.execute(f"SELECT * FROM {tbl} LIMIT %s", (limit,))
+            colnames = [desc[0] for desc in cur.description]
+            rows = cur.fetchall()
+        except Exception:
+            colnames = []
+            rows = []
+
+        results[tbl] = {
+            "columns": colnames,
+            "rows": rows
+        }
+
+    cur.close()
+    conn.close()
+
+    return jsonify(results)
+@app.route("/snapshot")
+def snapshot():
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Snapshot 1: dim_date summary
     cur.execute("""
         SELECT 
             COUNT(*) AS total_dates,
@@ -144,6 +187,7 @@ def snapshot():
     """)
     date_snapshot = cur.fetchone()
 
+    # Snapshot 2: dim_store summary
     cur.execute("""
         SELECT 
             COUNT(*) AS total_stores,
@@ -160,5 +204,8 @@ def snapshot():
         date_snapshot=date_snapshot,
         store_snapshot=store_snapshot,
     )
+
+
+
 if __name__ == "__main__":
     app.run(debug=True)

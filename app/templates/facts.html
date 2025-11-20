@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Facts Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+
+  <body class="bg-gray-100 p-6">
+
+    <!-- HEADER -->
+    <div class="w-full flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">Fact Tables</h1>
+      <a href="/" class="text-blue-600 hover:underline">← Back to Dashboard</a>
+    </div>
+
+    <!-- LIMIT SELECTOR -->
+    <div class="mb-6">
+      <label for="limitSelect" class="font-semibold mr-2">Limit Rows:</label>
+      <select id="limitSelect" onchange="loadFacts()" 
+              class="border border-gray-300 rounded-md p-2 bg-white">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="75">75</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+
+    <!-- FACT TABLES GRID -->
+    <div id="factsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+
+    <script>
+      async function loadFacts() {
+        const limit = document.getElementById("limitSelect").value;
+
+        const response = await fetch(`/facts/data?limit=${limit}`);
+        const data = await response.json();
+
+        const container = document.getElementById("factsContainer");
+        container.innerHTML = "";
+
+        Object.keys(data).forEach((tbl) => {
+          const card = document.createElement("div");
+          card.className =
+            "bg-white p-5 rounded-xl shadow border border-gray-200 overflow-x-auto";
+
+          const title = document.createElement("h3");
+          title.className = "text-lg font-semibold mb-4";
+          title.innerText = tbl;
+          card.appendChild(title);
+
+          const table = document.createElement("table");
+          table.className =
+            "min-w-[700px] border-collapse text-sm";
+
+          // Header
+          const thead = document.createElement("thead");
+          const headRow = document.createElement("tr");
+
+          data[tbl].columns.forEach((col) => {
+            const th = document.createElement("th");
+            th.className =
+              "border border-gray-300 bg-gray-100 p-2 font-semibold";
+            th.innerText = col;
+            headRow.appendChild(th);
+          });
+
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+
+          // Body
+          const tbody = document.createElement("tbody");
+          data[tbl].rows.forEach((row) => {
+            const tr = document.createElement("tr");
+
+            row.forEach((val) => {
+              const td = document.createElement("td");
+              td.className = "border border-gray-300 p-2";
+              td.innerText = val;
+              tr.appendChild(td);
+            });
+
+            tbody.appendChild(tr);
+          });
+
+          table.appendChild(tbody);
+          card.appendChild(table);
+          container.appendChild(card);
+        });
+      }
+
+      // Auto-load on open
+      loadFacts();
+    </script>
+  </body>
+</html>
