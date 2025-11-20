@@ -8,12 +8,19 @@ DB_CONFIG = {
     "port": 5432,
 }
 
+
 def init_database():
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
 
+    # ======================================================
+    # DROP TABLES
+    # ======================================================
     print("Dropping existing tables...")
     cur.execute("""
+        DROP TABLE IF EXISTS fact_promotion CASCADE;     -- NEW
+        DROP TABLE IF EXISTS dim_promotion CASCADE;       -- NEW
+
         DROP TABLE IF EXISTS fact_sales CASCADE;
         DROP TABLE IF EXISTS dim_date CASCADE;
         DROP TABLE IF EXISTS dim_store CASCADE;
@@ -22,6 +29,9 @@ def init_database():
         DROP TABLE IF EXISTS dim_payment_method CASCADE;
     """)
 
+    # ======================================================
+    # CREATE DIMENSIONS
+    # ======================================================
     print("Creating dimension tables...")
     cur.execute("""
         CREATE TABLE dim_date (
@@ -59,8 +69,23 @@ def init_database():
             payment_method_key SERIAL PRIMARY KEY,
             payment_type VARCHAR(50)
         );
+
+        --------------------------------------------------------
+        -- NEW: DIM PROMOTION
+        --------------------------------------------------------
+        CREATE TABLE dim_promotion (
+            promotion_key SERIAL PRIMARY KEY,
+            promotion_name VARCHAR(200),
+            promotion_type VARCHAR(50),
+            discount_percent INT,
+            start_date DATE,
+            end_date DATE
+        );
     """)
 
+    # ======================================================
+    # CREATE FACTS
+    # ======================================================
     print("Creating fact table...")
     cur.execute("""
         CREATE TABLE fact_sales (
@@ -71,22 +96,33 @@ def init_database():
             customer_key INT REFERENCES dim_customer(customer_key),
             payment_method_key INT REFERENCES dim_payment_method(payment_method_key),
 
+            --------------------------------------------------------
+            -- NEW: ADD PROMOTION REFERENCE
+            --------------------------------------------------------
+            promotion_key INT REFERENCES dim_promotion(promotion_key),
+
             transaction_id VARCHAR(50),
             quantity INT,
             unit_price NUMERIC(12,2),
             sales_amount NUMERIC(12,2),
             discount_amount NUMERIC(12,2)
         );
+
+        --------------------------------------------------------
+        -- NEW: FACTLESS FACT PROMOTION EVENT
+        --------------------------------------------------------
+        CREATE TABLE fact_promotion (
+            promotion_key INT REFERENCES dim_promotion(promotion_key),
+            date_key INT REFERENCES dim_date(date_key),
+            store_key INT REFERENCES dim_store(store_key)
+        );
     """)
 
-    # ============================
-    # SEED DIMENSIONS
-    # ============================
-
+    # ======================================================
+    # SEED DIM DATE
+    # ======================================================
     print("Seeding dim_date...")
-    # Generate tanggal otomatis
     from datetime import date, timedelta
-
     start = date(2025, 10, 1)
     end = date(2025, 11, 30)
 
@@ -95,7 +131,7 @@ def init_database():
     while current <= end:
         dk = int(current.strftime("%Y%m%d"))
         dates.append((dk, current, current.year, current.month, current.day,
-                    current.strftime("%a"), current.strftime("%b")))
+                      current.strftime("%a"), current.strftime("%b")))
         current += timedelta(days=1)
 
     cur.executemany("""
@@ -104,7 +140,9 @@ def init_database():
         VALUES (%s, %s, %s, %s, %s, %s, %s);
     """, dates)
 
-
+    # ======================================================
+    # SEED DIM STORE
+    # ======================================================
     print("Seeding dim_store...")
     stores = [
         ("Indomaret A", "Jakarta", "Jabodetabek"),
@@ -118,13 +156,14 @@ def init_database():
         ("Alfamart D", "Bandung", "Jawa Barat"),
         ("Indomaret F", "Bali", "Bali"),
     ]
-
     cur.executemany("""
         INSERT INTO dim_store (store_name, city, region)
         VALUES (%s, %s, %s);
     """, stores)
 
-
+    # ======================================================
+    # SEED DIM PRODUCT
+    # ======================================================
     print("Seeding dim_product...")
     products = [
         ("Aqua 600ml", "Minuman", "Aqua"),
@@ -148,19 +187,22 @@ def init_database():
         ("Pepsodent 190g", "Personal Care", "Pepsodent"),
         ("Sunsilk Hitam", "Personal Care", "Sunsilk"),
     ]
-
     cur.executemany("""
         INSERT INTO dim_product (product_name, category, brand)
         VALUES (%s, %s, %s);
     """, products)
 
-
+    # ======================================================
+    # SEED DIM CUSTOMER
+    # ======================================================
     print("Seeding dim_customer...")
     import random
 
     customers = []
-    male_names = ["Budi", "Agus", "Doni", "Rangga", "Rudi", "Kevin", "Andre", "Rizky"]
-    female_names = ["Siti", "Anisa", "Nadia", "Putri", "Dewi", "Ratna", "Ayu", "Bella"]
+    male_names = ["Budi", "Agus", "Doni", "Rangga",
+                  "Rudi", "Kevin", "Andre", "Rizky"]
+    female_names = ["Siti", "Anisa", "Nadia",
+                    "Putri", "Dewi", "Ratna", "Ayu", "Bella"]
 
     for i in range(50):
         if random.random() < 0.5:
@@ -178,7 +220,9 @@ def init_database():
         VALUES (%s, %s, %s);
     """, customers)
 
-
+    # ======================================================
+    # SEED PAYMENT METHODS
+    # ======================================================
     print("Seeding dim_payment_method...")
     payment_methods = [
         ("CASH",),
@@ -187,54 +231,93 @@ def init_database():
         ("DANA",),
         ("EDC",),
     ]
-
     cur.executemany("""
         INSERT INTO dim_payment_method (payment_type)
         VALUES (%s);
     """, payment_methods)
 
+    # ======================================================
+    # NEW: SEED DIM PROMOTION
+    # ======================================================
+    print("Seeding dim_promotion...")
+    promotions = [
+        ("Diskon Aqua 10%", "Discount", 10, "2025-10-01", "2025-10-15"),
+        ("Flash Sale Indomie", "Flash Sale", 20, "2025-10-10", "2025-10-12"),
+        ("Promo Snack 5%", "Discount", 5, "2025-11-01", "2025-11-30"),
+        ("Member Only Drinks 15%", "Member", 15, "2025-10-20", "2025-10-30"),
+    ]
+    cur.executemany("""
+        INSERT INTO dim_promotion (promotion_name, promotion_type, discount_percent, start_date, end_date)
+        VALUES (%s, %s, %s, %s, %s);
+    """, promotions)
 
-    # ============================
-    # SEED FACT SALES — 200+ transaksi
-    # ============================
+    # ======================================================
+    # NEW: SEED FACTLESS FACT PROMOTION
+    # ======================================================
+    print("Seeding fact_promotion...")
 
+    fact_promo_rows = []
+    for promo_id, (_, _, _, start, end) in enumerate(promotions, start=1):
+        for dkey, full_date, *_ in dates:
+            if start <= str(full_date) <= end:
+                # promo berlaku di semua store untuk sederhana
+                for store_key in range(1, len(stores) + 1):
+                    fact_promo_rows.append((promo_id, dkey, store_key))
+
+    cur.executemany("""
+        INSERT INTO fact_promotion (promotion_key, date_key, store_key)
+        VALUES (%s, %s, %s);
+    """, fact_promo_rows)
+
+    # ======================================================
+    # SEED FACT SALES
+    # ======================================================
     print("Seeding fact_sales...")
 
     fact_rows = []
     transaction_counter = 1
 
     for dkey, full_date, *_ in dates:
-
-        # setiap tanggal ada 5–15 transaksi
         for _ in range(random.randint(100, 120)):
-
             transaction_id = f"TX{transaction_counter:04d}"
             transaction_counter += 1
 
-            # setiap transaksi jual 1–4 produk
             for __ in range(random.randint(1, 4)):
-
                 product_key = random.randint(1, len(products))
                 store_key = random.randint(1, len(stores))
                 customer_key = random.randint(1, len(customers))
                 payment_key = random.randint(1, len(payment_methods))
 
+                # determine promo if exists
+                active_promos = [
+                    p_id for (p_id, _, _, _, start, end) in [
+                        (i+1, *promotions[i]) for i in range(len(promotions))
+                    ]
+                    if promotions[p_id-1][3] <= str(full_date) <= promotions[p_id-1][4]
+                ]
+                promotion_key = random.choice(
+                    active_promos) if active_promos else None
+
                 quantity = random.randint(1, 5)
                 unit_price = random.randint(3000, 25000)
                 amount = quantity * unit_price
-                discount = random.choice([0, 0, 0, 500, 1000])  # kadang diskon
+
+                discount_pct = promotions[promotion_key -
+                                          1][2] if promotion_key else 0
+                discount = (amount * discount_pct /
+                            100) if promotion_key else random.choice([0, 0, 500])
 
                 fact_rows.append((
                     dkey, product_key, store_key, customer_key,
-                    payment_key, transaction_id,
+                    payment_key, promotion_key, transaction_id,
                     quantity, unit_price, amount, discount
                 ))
 
     cur.executemany("""
         INSERT INTO fact_sales 
         (date_key, product_key, store_key, customer_key, payment_method_key,
-        transaction_id, quantity, unit_price, sales_amount, discount_amount)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+         promotion_key, transaction_id, quantity, unit_price, sales_amount, discount_amount)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
     """, fact_rows)
 
     print("SEED DONE!")

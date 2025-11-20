@@ -57,83 +57,151 @@
           <h4 class="font-semibold mb-3">Daily Sales</h4>
           <canvas id="dailyChart"></canvas>
         </div>
+
+        <!-- ====================== NEW FACT 1 ====================== -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Promotion Performance</h4>
+          <canvas id="promotionChart"></canvas>
+        </div>
+
+        <!-- ====================== NEW FACT 2 ====================== -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Top Promo</h4>
+          <canvas id="topPromoChart"></canvas>
+        </div>
+
+        <!-- ====================== NEW FACT 3 ====================== -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h4 class="font-semibold mb-3">Sales by Region</h4>
+          <canvas id="regionChart"></canvas>
+        </div>
       </div>
     </div>
+
     <script>
-      // ================= Daily Sales =====================
-      const dailyLabels = {{ daily | map(attribute=0) | list | tojson }};
-      const dailyValues = {{ daily | map(attribute=1) | list | tojson }};
+        // ================= Daily Sales =====================
+        const dailyLabels = {{ daily | map(attribute=0) | list | tojson }};
+        const dailyValues = {{ daily | map(attribute=1) | list | tojson }};
 
-      new Chart(document.getElementById("dailyChart"), {
-          type: "line",
-          data: {
-              labels: dailyLabels,
-              datasets: [{
-                  label: "Daily Sales",
-                  data: dailyValues,
-                  borderWidth: 2,
-                  borderColor: "#0984e3",
-                  backgroundColor: "rgba(9,132,227,0.2)",
-                  tension: 0.3,
+        new Chart(document.getElementById("dailyChart"), {
+            type: "line",
+            data: {
+                labels: dailyLabels,
+                datasets: [{
+                    label: "Daily Sales",
+                    data: dailyValues,
+                    borderWidth: 2,
+                    borderColor: "#0984e3",
+                    backgroundColor: "rgba(9,132,227,0.2)",
+                    tension: 0.3,
+                }]
+            }
+        });
+
+        // ================= Payment Summary =================
+        const paymentLabels = {{ payment | map(attribute=0) | list | tojson }};
+        const paymentValues = {{ payment | map(attribute=1) | list | tojson }};
+
+        new Chart(document.getElementById("paymentChart"), {
+            type: "bar",
+            data: {
+                labels: paymentLabels,
+                datasets: [{
+                    label: "Sales by Payment",
+                    data: paymentValues
+                }]
+            }
+        });
+
+        // ================= Top Products ====================
+        const topLabels = {{ top_products | map(attribute=0) | list | tojson }};
+        const topValues = {{ top_products | map(attribute=1) | list | tojson }};
+
+        new Chart(document.getElementById("topProductChart"), {
+            type: "bar",
+            data: {
+                labels: topLabels,
+                datasets: [{
+                    label: "Top Selling Products",
+                    data: topValues
+                }]
+            }
+        });
+
+        // ================= Category Sales ==================
+        const categoryLabels = {{ sales_by_category | map(attribute=0) | list | tojson }};
+        const categoryValues = {{ sales_by_category | map(attribute=1) | list | tojson }};
+
+        new Chart(document.getElementById("categoryChart"), {
+            type: "pie",
+            data: {
+                labels: categoryLabels,
+                datasets: [{
+                    data: categoryValues
+                }]
+            }
+        });
+
+        // ================= Basket Frequency ================
+        const basketLabels = {{ basket_freq | map(attribute=0) | list | tojson }};
+        const basketValues = {{ basket_freq | map(attribute=1) | list | tojson }};
+
+        new Chart(document.getElementById("basketChart"), {
+            type: "bar",
+            data: {
+                labels: basketLabels,
+                datasets: [{
+                    label: "Basket Frequency",
+                    data: basketValues
               }]
           }
       });
+    </script>
+    <!-- ===================== PROMOTION PERFORMANCE CHART ===================== -->
+    <script>
+      const promoSummary = {{ promo_summary | tojson }};
+      const promoLabels = promoSummary.map(row => row[0]);
+      const promoValues = promoSummary.map(row => row[3]);
 
-      // ================= Payment Summary =================
-      const paymentLabels = {{ payment | map(attribute=0) | list | tojson }};
-      const paymentValues = {{ payment | map(attribute=1) | list | tojson }};
-
-      new Chart(document.getElementById("paymentChart"), {
+      new Chart(document.getElementById("promotionChart"), {
           type: "bar",
           data: {
-              labels: paymentLabels,
+              labels: promoLabels,
               datasets: [{
-                  label: "Sales by Payment",
-                  data: paymentValues
+                  label: "Total Sales by Promotion",
+                  data: promoValues
               }]
           }
       });
 
-      // ================= Top Products ====================
-      const topLabels = {{ top_products | map(attribute=0) | list | tojson }};
-      const topValues = {{ top_products | map(attribute=1) | list | tojson }};
+      // ===================== TOP PROMOTIONS CHART =====================
+      const topPromotions = {{ top_promotions | tojson }};
+      const topPromoLabels = topPromotions.map(row => row[0]);
+      const topPromoValues = topPromotions.map(row => row[2]);
 
-      new Chart(document.getElementById("topProductChart"), {
+      new Chart(document.getElementById("topPromoChart"), {
           type: "bar",
           data: {
-              labels: topLabels,
+              labels: topPromoLabels,
               datasets: [{
-                  label: "Top Selling Products",
-                  data: topValues
+                  label: "Top Promotion Sales",
+                  data: topPromoValues
               }]
           }
       });
 
-      // ================= Category Sales ==================
-      const categoryLabels = {{ sales_by_category | map(attribute=0) | list | tojson }};
-      const categoryValues = {{ sales_by_category | map(attribute=1) | list | tojson }};
+      // ===================== SALES BY REGION =====================
+      const regionData = {{ sales_by_region | tojson }};
+      const regionLabels = regionData.map(row => row[0]);
+      const regionValues = regionData.map(row => row[1]);
 
-      new Chart(document.getElementById("categoryChart"), {
+      new Chart(document.getElementById("regionChart"), {
           type: "pie",
           data: {
-              labels: categoryLabels,
+              labels: regionLabels,
               datasets: [{
-                  data: categoryValues
-              }]
-          }
-      });
-
-      // ================= Basket Frequency ================
-      const basketLabels = {{ basket_freq | map(attribute=0) | list | tojson }};
-      const basketValues = {{ basket_freq | map(attribute=1) | list | tojson }};
-
-      new Chart(document.getElementById("basketChart"), {
-          type: "bar",
-          data: {
-              labels: basketLabels,
-              datasets: [{
-                  label: "Basket Frequency",
-                  data: basketValues
+                  label: "Sales by Region",
+                  data: regionValues
               }]
           }
       });

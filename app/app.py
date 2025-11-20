@@ -3,13 +3,15 @@ from db import get_db
 
 app = Flask(__name__)
 
-@app.route("/dashboard")
+
+@app.route("/")
 def dashboard():
     conn = get_db()
     cur = conn.cursor()
 
     # Daily sales
-    cur.execute("SELECT full_date, total_sales FROM vw_daily_sales ORDER BY full_date")
+    cur.execute(
+        "SELECT full_date, total_sales FROM vw_daily_sales ORDER BY full_date")
     daily = cur.fetchall()
 
     # Payment summary
@@ -62,14 +64,55 @@ def dashboard():
     """)
     basket_freq = cur.fetchall()
 
+    # 5. Promotion Performance Summary
+    cur.execute("""
+        SELECT 
+            p.promotion_name,
+            p.promotion_type,
+            COUNT(f.sales_key) AS trx_count,
+            SUM(f.sales_amount) AS total_sales
+        FROM fact_sales f
+        JOIN dim_promotion p ON p.promotion_key = f.promotion_key
+        WHERE f.promotion_key IS NOT NULL
+        GROUP BY p.promotion_name, p.promotion_type
+        ORDER BY total_sales DESC
+    """)
+    promo_summary = cur.fetchall()
+
+    # 6. Top Promotions by Sales Uplift
+    cur.execute("""
+        SELECT 
+            p.promotion_name,
+            SUM(f.discount_amount) AS total_discount,
+            SUM(f.sales_amount) AS total_sales
+        FROM fact_sales f
+        JOIN dim_promotion p ON p.promotion_key = f.promotion_key
+        GROUP BY p.promotion_name
+        ORDER BY total_sales DESC
+        LIMIT 5
+    """)
+    top_promotions = cur.fetchall()
+
+    # 7. Product Sales by Region
+    cur.execute("""
+        SELECT 
+            s.region,
+            SUM(f.sales_amount) AS total_sales
+        FROM fact_sales f
+        JOIN dim_store s ON s.store_key = f.store_key
+        GROUP BY s.region
+        ORDER BY total_sales DESC
+    """)
+    sales_by_region = cur.fetchall()
+
     conn.close()
 
-    print("DAILY =", daily)
-    print("PAYMENT =", payment)
-    print("TOP =", top_products)
-    print("CATEGORY =", sales_by_category)
-    print("BASKET =", basket_freq)
-
+    # print("DAILY =", daily)
+    # print("PAYMENT =", payment)
+    # print("TOP =", top_products)
+    # print("CATEGORY =", sales_by_category)
+    # print("BASKET =", basket_freq)
+    print("PROMO SUMMARY", promo_summary)
 
     return render_template(
         "index.html",
@@ -81,7 +124,10 @@ def dashboard():
         top_products=top_products,
         product_daily=product_daily,
         sales_by_category=sales_by_category,
-        basket_freq=basket_freq
+        basket_freq=basket_freq,
+        promo_summary=promo_summary,
+        top_promotions=top_promotions,
+        sales_by_region=sales_by_region
     )
 
 
