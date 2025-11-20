@@ -256,5 +256,36 @@ def warehouse_data():
     return jsonify(tables)
 
 
+@app.route("/dimensions")
+def dimensions():
+    limit = request.args.get("limit", 10, type=int)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    # List of dimension tables
+    dimension_tables = [
+        "dim_date",
+        "dim_store",
+        "dim_product",
+        "dim_customer",
+        "dim_payment_method",
+        "dim_promotion",
+        "dim_warehouse"
+    ]
+
+    dimensions_data = {}
+
+    for table in dimension_tables:
+        cur.execute(f"SELECT * FROM {table} LIMIT %s", (limit,))
+        rows = cur.fetchall()
+        colnames = [desc[0] for desc in cur.description]
+        dimensions_data[table] = {"columns": colnames, "rows": rows}
+
+    conn.close()
+
+    return render_template("dimensions.html", dimensions_data=dimensions_data, limit=limit)
+
+
 if __name__ == "__main__":
     app.run(debug=True)

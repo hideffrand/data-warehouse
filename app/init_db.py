@@ -279,11 +279,13 @@ def init_database():
     # ======================================================
     print("Seeding dim_promotion...")
     promotions = [
-        ("Diskon Aqua 10%", "Discount", 10, "2025-10-01", "2025-10-15"),
-        ("Flash Sale Indomie", "Flash Sale", 20, "2025-10-10", "2025-10-12"),
-        ("Promo Snack 5%", "Discount", 5, "2025-11-01", "2025-11-30"),
-        ("Member Only Drinks 15%", "Member", 15, "2025-10-20", "2025-10-30"),
+        ("Diskon 10% Semua Minuman", "Discount", 10, "2025-10-01", "2025-10-15"),
+        ("Diskon 5% Semua Snack", "Discount", 5, "2025-10-10", "2025-10-20"),
+        ("Promo Member 15%", "Member", 15, "2025-10-21", "2025-10-31"),
+        ("Cashback 10%",
+         "Cashback", 10, "2025-11-01", "2025-11-30")
     ]
+
     cur.executemany("""
         INSERT INTO dim_promotion (promotion_name, promotion_type, discount_percent, start_date, end_date)
         VALUES (%s, %s, %s, %s, %s)
