@@ -219,7 +219,8 @@ def warehouse_data():
 
     # Snapshot Fact
     cur.execute(f"""
-        SELECT date_key, warehouse_key, product_key, on_hand_qty, reserved_qty, inbound_qty
+        SELECT date_key, warehouse_key, product_key, on_hand_qty
+        -- ,reserved_qty, inbound_qty
         FROM fact_daily_inventory_snapshot
         ORDER BY date_key DESC
         LIMIT {limit};
