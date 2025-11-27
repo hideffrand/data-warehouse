@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Facts Viewer</title>
+    <title>Warehouse Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
-
-  <body class="bg-gray-100 p-6">
-    <!-- HEADER -->
-    <div class="w-full flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">Fact Tables</h1>
+  <body class="p-6 bg-gray-50">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">Warehouse Facts</h1>
       <div class="flex gap-6 items-center">
         <a href="/" class="text-blue-600 hover:underline">Dashboard</a>
         |
-        <a href="/dimensions" class="text-blue-600 hover:underline">Dimensions</a>
+        <a href="/dimensions" class="text-blue-600 hover:underline"
+          >Dimensions</a
+        >
         |
         <a href="/facts" class="text-blue-600 hover:underline">Fact Tables</a>
         |
@@ -20,89 +20,84 @@
       </div>
     </div>
 
-    <!-- LIMIT SELECTOR -->
-    <div class="mb-6">
-      <label for="limitSelect" class="font-semibold mr-2">Limit Rows:</label>
-      <select
-        id="limitSelect"
-        onchange="loadFacts()"
-        class="border border-gray-300 rounded-md p-2 bg-white"
-      >
-        <option value="10">10</option>
-        <option value="25" selected>25</option>
-        <option value="50">50</option>
-        <option value="75">75</option>
-        <option value="100">100</option>
-      </select>
-    </div>
-
-    <!-- FACT TABLES GRID -->
     <div
-      id="factsContainer"
+      id="warehouseContainer"
       class="grid grid-cols-1 md:grid-cols-2 gap-6"
     ></div>
 
     <script>
-      async function loadFacts() {
-        const limit = document.getElementById("limitSelect").value;
-
-        const response = await fetch(`/facts/data?limit=${limit}`);
+      async function loadWarehouse(limit = 25) {
+        const response = await fetch(`/warehouse/data?limit=${limit}`);
         const data = await response.json();
 
-        const container = document.getElementById("factsContainer");
+        const container = document.getElementById("warehouseContainer");
         container.innerHTML = "";
 
         Object.keys(data).forEach((tbl) => {
           const card = document.createElement("div");
-          card.className =
-            "bg-white p-5 rounded-xl shadow border border-gray-200 overflow-x-auto";
+          card.className = "bg-white p-4 rounded-lg shadow overflow-x-auto";
+
+          // Table title + limit selector
+          const headerDiv = document.createElement("div");
+          headerDiv.className = "flex justify-between items-center mb-2";
 
           const title = document.createElement("h3");
-          title.className = "text-lg font-semibold mb-4";
+          title.className = "font-semibold text-lg";
           title.innerText = tbl;
-          card.appendChild(title);
 
-          const table = document.createElement("table");
-          table.className = "min-w-[700px] border-collapse text-sm";
-
-          // Header
-          const thead = document.createElement("thead");
-          const headRow = document.createElement("tr");
-
-          data[tbl].columns.forEach((col) => {
-            const th = document.createElement("th");
-            th.className =
-              "border border-gray-300 bg-gray-100 p-2 font-semibold";
-            th.innerText = col;
-            headRow.appendChild(th);
+          const select = document.createElement("select");
+          select.className = "border rounded px-2 py-1 text-sm";
+          [10, 25, 50, 75].forEach((n) => {
+            const opt = document.createElement("option");
+            opt.value = n;
+            opt.innerText = n;
+            if (n === limit) opt.selected = true;
+            select.appendChild(opt);
           });
 
+          select.onchange = () => loadWarehouse(parseInt(select.value));
+
+          headerDiv.appendChild(title);
+          headerDiv.appendChild(select);
+          card.appendChild(headerDiv);
+
+          // Table
+          const table = document.createElement("table");
+          table.className = "min-w-full border-collapse border border-gray-200";
+
+          // Table header
+          const thead = document.createElement("thead");
+          const headRow = document.createElement("tr");
+          data[tbl].columns.forEach((col) => {
+            const th = document.createElement("th");
+            th.innerText = col;
+            th.className = "border px-2 py-1 bg-gray-100 text-left";
+            headRow.appendChild(th);
+          });
           thead.appendChild(headRow);
           table.appendChild(thead);
 
-          // Body
+          // Table body
           const tbody = document.createElement("tbody");
           data[tbl].rows.forEach((row) => {
             const tr = document.createElement("tr");
-
             row.forEach((val) => {
               const td = document.createElement("td");
-              td.className = "border border-gray-300 p-2";
               td.innerText = val;
+              td.className = "border px-2 py-1";
               tr.appendChild(td);
             });
-
             tbody.appendChild(tr);
           });
-
           table.appendChild(tbody);
+
           card.appendChild(table);
           container.appendChild(card);
         });
       }
 
-      // Auto-load on open
-      loadFacts();
+      // Load default
+      loadWarehouse();
     </script>
   </body>
 </html>

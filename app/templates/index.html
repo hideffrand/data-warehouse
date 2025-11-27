@@ -8,7 +8,7 @@
 
   <body class="bg-gray-100">
     <!-- HEADER -->
-    <div class="p-6">
+    <div class="p-4">
       <div class="w-full flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold mb-6">DW Retail Dashboard</h1>
         <div class="flex gap-6 items-center">
@@ -18,8 +18,6 @@
             >Dimensions</a
           >
           |
-          <a href="/snapshot" class="text-blue-600 hover:underline">Snapshot</a>
-          |
           <a href="/facts" class="text-blue-600 hover:underline">Fact Tables</a>
           |
           <a href="/warehouse" class="text-blue-600 hover:underline"
@@ -28,200 +26,246 @@
         </div>
       </div>
 
-      <!-- KPI -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div class="bg-white p-6 rounded-xl shadow">
-          <p class="text-gray-500 text-sm">Total Sales</p>
-          <p class="text-2xl font-semibold">{{ total_sales }}</p>
-        </div>
-        <div class="bg-white p-6 rounded-xl shadow">
-          <p class="text-gray-500 text-sm">Total Quantity</p>
-          <p class="text-2xl font-semibold">{{ total_qty }}</p>
-        </div>
-        <div class="bg-white p-6 rounded-xl shadow">
-          <p class="text-gray-500 text-sm">Total Transactions</p>
-          <p class="text-2xl font-semibold">{{ total_trx }}</p>
-        </div>
-      </div>
-
       <!-- CHART GRID -->
       <div class="grid grid-cols-3 gap-6">
-        <!-- Product Basket -->
-        <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Frequently Bought Together</h4>
-          <canvas id="basketChart"></canvas>
-        </div>
-
         <!-- Payment Summary -->
         <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Payment Summary</h4>
+          <div class="flex justify-between mb-3">
+            <h4 class="font-semibold">Margin Per Payment</h4>
+
+            <div class="flex gap-2">
+              <input type="date" id="payStart" class="border p-1 rounded" />
+              <input type="date" id="payEnd" class="border p-1 rounded" />
+              <button
+                onclick="loadPayment()"
+                class="bg-blue-500 text-white px-3 rounded"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
           <canvas id="paymentChart"></canvas>
         </div>
 
         <!-- Top Products -->
         <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Top 5 Products</h4>
+          <div class="flex justify-between mb-3">
+            <h4 class="font-semibold">Top 5 Products</h4>
+
+            <div class="flex gap-2">
+              <input type="date" id="topStart" class="border p-1 rounded" />
+              <input type="date" id="topEnd" class="border p-1 rounded" />
+              <button
+                onclick="loadTopProducts()"
+                class="bg-blue-500 text-white px-3 rounded"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
           <canvas id="topProductChart"></canvas>
         </div>
 
         <!-- Sales by Category -->
         <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Sales by Category</h4>
+          <div class="flex justify-between mb-3">
+            <h4 class="font-semibold">Sales by Category</h4>
+
+            <div class="flex gap-2">
+              <input type="date" id="catStart" class="border p-1 rounded" />
+              <input type="date" id="catEnd" class="border p-1 rounded" />
+              <button
+                onclick="loadCategory()"
+                class="bg-blue-500 text-white px-3 rounded"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
           <canvas id="categoryChart"></canvas>
         </div>
 
         <!-- Daily Sales (span 2 columns) -->
-        <div class="bg-white p-6 rounded-xl shadow col-span-2">
-          <h4 class="font-semibold mb-3">Daily Sales</h4>
+        <div class="bg-white p-6 rounded-xl shadow col-span-3">
+          <div class="flex justify-between mb-3">
+            <h4 class="font-semibold">Gross Profit Daily</h4>
+            <div class="flex gap-2">
+              <input type="date" id="dailyStart" class="border p-1 rounded" />
+              <input type="date" id="dailyEnd" class="border p-1 rounded" />
+              <button
+                onclick="loadDaily()"
+                class="bg-blue-500 text-white px-3 rounded"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
           <canvas id="dailyChart"></canvas>
-        </div>
-
-        <!-- ====================== NEW FACT 1 ====================== -->
-        <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Promotion Performance</h4>
-          <canvas id="promotionChart"></canvas>
-        </div>
-
-        <!-- ====================== NEW FACT 2 ====================== -->
-        <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Top Promo</h4>
-          <canvas id="topPromoChart"></canvas>
-        </div>
-
-        <!-- ====================== NEW FACT 3 ====================== -->
-        <div class="bg-white p-6 rounded-xl shadow">
-          <h4 class="font-semibold mb-3">Sales by Region</h4>
-          <canvas id="regionChart"></canvas>
         </div>
       </div>
     </div>
 
     <script>
-        // ================= Daily Sales =====================
-        const dailyLabels = {{ daily | map(attribute=0) | list | tojson }};
-        const dailyValues = {{ daily | map(attribute=1) | list | tojson }};
+      let dailyChart;
 
-        new Chart(document.getElementById("dailyChart"), {
-            type: "line",
-            data: {
-                labels: dailyLabels,
-                datasets: [{
-                    label: "Daily Sales",
-                    data: dailyValues,
-                    borderWidth: 2,
-                    borderColor: "#0984e3",
-                    backgroundColor: "rgba(9,132,227,0.2)",
-                    tension: 0.3,
-                }]
-            }
+      async function loadDaily() {
+        const start = document.getElementById("dailyStart").value;
+        const end = document.getElementById("dailyEnd").value;
+
+        const res = await fetch(
+          `/api/daily-gross-profit?start=${start}&end=${end}`
+        );
+        const data = await res.json();
+
+        const labels = data.map((r) => r[0]);
+        const values = data.map((r) => r[1]);
+
+        if (dailyChart) dailyChart.destroy();
+
+        dailyChart = new Chart(document.getElementById("dailyChart"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Daily Gross Profit",
+                data: values,
+                borderWidth: 2,
+              },
+            ],
+          },
         });
+      }
 
-        // ================= Payment Summary =================
-        const paymentLabels = {{ payment | map(attribute=0) | list | tojson }};
-        const paymentValues = {{ payment | map(attribute=1) | list | tojson }};
+      let paymentChart;
 
-        new Chart(document.getElementById("paymentChart"), {
-            type: "bar",
-            data: {
-                labels: paymentLabels,
-                datasets: [{
-                    label: "Sales by Payment",
-                    data: paymentValues
-                }]
-            }
-        });
+      async function loadPayment() {
+        const start = document.getElementById("payStart").value;
+        const end = document.getElementById("payEnd").value;
 
-        // ================= Top Products ====================
-        const topLabels = {{ top_products | map(attribute=0) | list | tojson }};
-        const topValues = {{ top_products | map(attribute=1) | list | tojson }};
+        const res = await fetch(
+          `/api/payment-summary?start=${start}&end=${end}`
+        );
+        const data = await res.json();
 
-        new Chart(document.getElementById("topProductChart"), {
-            type: "bar",
-            data: {
-                labels: topLabels,
-                datasets: [{
-                    label: "Top Selling Products",
-                    data: topValues
-                }]
-            }
-        });
+        const labels = data.map((r) => r[0]);
+        const values = data.map((r) => r[1] * 100); // margin → persen
 
-        // ================= Category Sales ==================
-        const categoryLabels = {{ sales_by_category | map(attribute=0) | list | tojson }};
-        const categoryValues = {{ sales_by_category | map(attribute=1) | list | tojson }};
+        if (paymentChart) paymentChart.destroy();
 
-        new Chart(document.getElementById("categoryChart"), {
-            type: "pie",
-            data: {
-                labels: categoryLabels,
-                datasets: [{
-                    data: categoryValues
-                }]
-            }
-        });
-
-        // ================= Basket Frequency ================
-        const basketLabels = {{ basket_freq | map(attribute=0) | list | tojson }};
-        const basketValues = {{ basket_freq | map(attribute=1) | list | tojson }};
-
-        new Chart(document.getElementById("basketChart"), {
-            type: "bar",
-            data: {
-                labels: basketLabels,
-                datasets: [{
-                    label: "Basket Frequency",
-                    data: basketValues
-              }]
-          }
-      });
-    </script>
-    <!-- ===================== PROMOTION PERFORMANCE CHART ===================== -->
-    <script>
-      const promoSummary = {{ promo_summary | tojson }};
-      const promoLabels = promoSummary.map(row => row[0]);
-      const promoValues = promoSummary.map(row => row[3]);
-
-      new Chart(document.getElementById("promotionChart"), {
+        paymentChart = new Chart(document.getElementById("paymentChart"), {
           type: "bar",
           data: {
-              labels: promoLabels,
-              datasets: [{
-                  label: "Total Sales by Promotion",
-                  data: promoValues
-              }]
+            labels,
+            datasets: [
+              {
+                label: "Margin per Payment (%)",
+                data: values,
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: {
+            scales: {
+              y: {
+                ticks: {
+                  callback: function (value) {
+                    return value + "%";
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      let topProductChart;
+
+      async function loadTopProducts() {
+        const start = document.getElementById("topStart").value;
+        const end = document.getElementById("topEnd").value;
+
+        const res = await fetch(`/api/top-products?start=${start}&end=${end}`);
+        const data = await res.json();
+
+        const labels = data.map((r) => r[0]);
+        const values = data.map((r) => r[1]);
+
+        if (topProductChart) topProductChart.destroy();
+
+        topProductChart = new Chart(
+          document.getElementById("topProductChart"),
+          {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Top Selling Products",
+                  data: values,
+                  borderWidth: 2,
+                },
+              ],
+            },
           }
-      });
+        );
+      }
 
-      // ===================== TOP PROMOTIONS CHART =====================
-      const topPromotions = {{ top_promotions | tojson }};
-      const topPromoLabels = topPromotions.map(row => row[0]);
-      const topPromoValues = topPromotions.map(row => row[2]);
+      let categoryChart;
 
-      new Chart(document.getElementById("topPromoChart"), {
-          type: "bar",
-          data: {
-              labels: topPromoLabels,
-              datasets: [{
-                  label: "Top Promotion Sales",
-                  data: topPromoValues
-              }]
-          }
-      });
+      async function loadCategory() {
+        const start = document.getElementById("catStart").value;
+        const end = document.getElementById("catEnd").value;
 
-      // ===================== SALES BY REGION =====================
-      const regionData = {{ sales_by_region | tojson }};
-      const regionLabels = regionData.map(row => row[0]);
-      const regionValues = regionData.map(row => row[1]);
+        const res = await fetch(
+          `/api/category-sales?start=${start}&end=${end}`
+        );
+        const data = await res.json();
 
-      new Chart(document.getElementById("regionChart"), {
+        const labels = data.map((r) => r[0]);
+        const values = data.map((r) => r[1]);
+
+        if (categoryChart) categoryChart.destroy();
+
+        categoryChart = new Chart(document.getElementById("categoryChart"), {
           type: "pie",
           data: {
-              labels: regionLabels,
-              datasets: [{
-                  label: "Sales by Region",
-                  data: regionValues
-              }]
-          }
+            labels,
+            datasets: [
+              {
+                data: values,
+                borderWidth: 2,
+              },
+            ],
+          },
+        });
+      }
+
+      window.addEventListener("load", () => {
+        const end = new Date().toISOString().split("T")[0];
+        const start = new Date(Date.now() - 30 * 86400000)
+          .toISOString()
+          .split("T")[0];
+
+        document.getElementById("dailyStart").value = start;
+        document.getElementById("dailyEnd").value = end;
+
+        document.getElementById("payStart").value = start;
+        document.getElementById("payEnd").value = end;
+
+        document.getElementById("topStart").value = start;
+        document.getElementById("topEnd").value = end;
+
+        document.getElementById("catStart").value = start;
+        document.getElementById("catEnd").value = end;
+
+        loadDaily();
+        loadPayment();
+        loadTopProducts();
+        loadCategory();
       });
     </script>
   </body>

@@ -15,24 +15,14 @@ def init_database():
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
 
-    # ======================================================
-    # DROP TABLES (drop in order to avoid FK issues)
-    # ======================================================
     print("Dropping existing tables...")
     cur.execute("""
         DROP TABLE IF EXISTS fact_inventory_balance CASCADE;
         DROP TABLE IF EXISTS fact_inventory_movement CASCADE;
         DROP TABLE IF EXISTS fact_daily_inventory_snapshot CASCADE;
-
         DROP TABLE IF EXISTS fact_promotion CASCADE;
         DROP TABLE IF EXISTS dim_promotion CASCADE;
-
         DROP TABLE IF EXISTS fact_sales CASCADE;
-        DROP TABLE IF EXISTS fact_product_avg_price CASCADE;
-        DROP TABLE IF EXISTS fact_product_frequency CASCADE;
-        DROP TABLE IF EXISTS fact_product_store CASCADE;
-        DROP TABLE IF EXISTS fact_product_daily CASCADE;
-        DROP TABLE IF EXISTS fact_product_sales CASCADE;
 
         DROP TABLE IF EXISTS dim_warehouse CASCADE;
         DROP TABLE IF EXISTS dim_date CASCADE;
@@ -42,9 +32,6 @@ def init_database():
         DROP TABLE IF EXISTS dim_payment_method CASCADE;
     """)
 
-    # ======================================================
-    # CREATE DIMENSIONS
-    # ======================================================
     print("Creating dimension tables...")
     cur.execute("""
         CREATE TABLE dim_date (
@@ -68,7 +55,8 @@ def init_database():
             product_key SERIAL PRIMARY KEY,
             product_name VARCHAR(200),
             category VARCHAR(100),
-            brand VARCHAR(100)
+            brand VARCHAR(100),
+            cost_per_unit NUMERIC(12,2)   -- HARGA MODAL
         );
 
         CREATE TABLE dim_customer (
@@ -101,9 +89,6 @@ def init_database():
         );
     """)
 
-    # ======================================================
-    # CREATE FACTS
-    # ======================================================
     print("Creating fact table(s)...")
     cur.execute("""
         CREATE TABLE fact_sales (
@@ -115,10 +100,15 @@ def init_database():
             payment_method_key INT REFERENCES dim_payment_method(payment_method_key),
             promotion_key INT REFERENCES dim_promotion(promotion_key),
             transaction_id VARCHAR(50),
+
             quantity INT,
             unit_price NUMERIC(12,2),
             sales_amount NUMERIC(12,2),
-            discount_amount NUMERIC(12,2)
+            discount_amount NUMERIC(12,2),
+
+            -- DERIVED FACT
+            gross_profit NUMERIC(12,2),
+            margin_percent NUMERIC(12,2)
         );
 
         CREATE TABLE fact_promotion (
@@ -159,9 +149,6 @@ def init_database():
         );
     """)
 
-    # ======================================================
-    # SEED DIM DATE
-    # ======================================================
     print("Seeding dim_date...")
     start = date(2025, 10, 1)
     end = date(2025, 11, 30)
@@ -180,9 +167,6 @@ def init_database():
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, dates)
 
-    # ======================================================
-    # SEED DIM STORE
-    # ======================================================
     print("Seeding dim_store...")
     stores = [
         ("Indomaret A", "Jakarta", "Jabodetabek"),
@@ -202,9 +186,6 @@ def init_database():
         VALUES (%s, %s, %s)
     """, stores)
 
-    # ======================================================
-    # SEED DIM PRODUCT
-    # ======================================================
     print("Seeding dim_product...")
     products = [
         ("Aqua 600ml", "Minuman", "Aqua"),
@@ -228,10 +209,16 @@ def init_database():
         ("Pepsodent 190g", "Personal Care", "Pepsodent"),
         ("Sunsilk Hitam", "Personal Care", "Sunsilk"),
     ]
+    product_rows = []
+    for name, category, brand in products:
+        # generate cost_per_unit (between 500 and 20.000)
+        cost = random.randint(500, 20000)
+        product_rows.append((name, category, brand, cost))
+
     cur.executemany("""
-        INSERT INTO dim_product (product_name, category, brand)
-        VALUES (%s, %s, %s)
-    """, products)
+        INSERT INTO dim_product (product_name, category, brand, cost_per_unit)
+        VALUES (%s, %s, %s, %s)
+    """, product_rows)
 
     # ======================================================
     # SEED DIM CUSTOMER
@@ -310,53 +297,78 @@ def init_database():
     """, fact_promo_rows)
 
     # ======================================================
-    # SEED FACT SALES
+    # LOAD PRODUCT COSTS FIRST
     # ======================================================
+    cur.execute("SELECT product_key, cost_per_unit FROM dim_product")
+    cost_map = {pk: float(cost) for (pk, cost) in cur.fetchall()}
+
     print("Seeding fact_sales...")
     fact_rows = []
     transaction_counter = 1
 
     for dkey, full_date, *_ in dates:
+
+        # generate jumlah transaksi per hari
         for _ in range(random.randint(100, 120)):
-            transaction_id = f"TX{transaction_counter:04d}"
+            transaction_id = f"TX{transaction_counter:06d}"
             transaction_counter += 1
 
+            # 1 transaksi bisa punya 1-4 item
             for __ in range(random.randint(1, 4)):
+
                 product_key = random.randint(1, len(products))
                 store_key = random.randint(1, len(stores))
                 customer_key = random.randint(1, len(customers))
                 payment_key = random.randint(1, len(payment_methods))
 
-                # determine promo if exists
+                # Tentukan promo aktif
                 active_promos = [
                     p_id for (p_id, _, _, _, start, end) in [
                         (i+1, *promotions[i]) for i in range(len(promotions))
                     ]
                     if promotions[p_id-1][3] <= str(full_date) <= promotions[p_id-1][4]
                 ]
+
                 promotion_key = random.choice(
                     active_promos) if active_promos else None
 
+                # Random sales
                 quantity = random.randint(1, 120)
                 unit_price = random.randint(1000, 35000)
-                amount = quantity * unit_price
+                sales_amount = quantity * unit_price
 
-                discount_pct = promotions[promotion_key -
-                                          1][2] if promotion_key else 0
-                discount = (amount * discount_pct /
-                            100) if promotion_key else random.choice([0, 0, 500])
+                # Hitung diskon (pakai promo atau random kecil)
+                if promotion_key:
+                    discount_pct = promotions[promotion_key - 1][2]
+                    discount = sales_amount * discount_pct / 100
+                else:
+                    discount = random.choice([0, 0, 500])
+
+                # Ambil cost dari dim_product
+                cost_per_unit = cost_map[product_key]
+                cost_amount = quantity * cost_per_unit
+
+                # Hitung gross profit
+                gross_profit = sales_amount - cost_amount
 
                 fact_rows.append((
                     dkey, product_key, store_key, customer_key,
                     payment_key, promotion_key, transaction_id,
-                    quantity, unit_price, amount, discount
+                    quantity, unit_price, sales_amount, discount,
+                    gross_profit
                 ))
+
+    # ======================================================
+    # EXECUTE INSERT
+    # ======================================================
 
     cur.executemany("""
         INSERT INTO fact_sales 
-        (date_key, product_key, store_key, customer_key, payment_method_key,
-         promotion_key, transaction_id, quantity, unit_price, sales_amount, discount_amount)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        (date_key, product_key, store_key, customer_key, 
+        payment_method_key, promotion_key, transaction_id,
+        quantity, unit_price, sales_amount, discount_amount,
+        gross_profit)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, fact_rows)
 
     print("Seeding dim_warehouse...")
@@ -437,110 +449,6 @@ def init_database():
         """, (w_key, p_key, balance))
 
     print("SEED DONE!")
-
-    # ======================================================
-    # CREATE VIEWS
-    # ======================================================
-    print("Creating views...")
-    cur.execute("""
-        CREATE OR REPLACE VIEW vw_daily_sales AS
-        SELECT
-            f.date_key,
-            d.full_date,
-            SUM(f.sales_amount) AS total_sales,
-            SUM(f.quantity) AS total_qty
-        FROM fact_sales f
-        JOIN dim_date d ON d.date_key = f.date_key
-        GROUP BY f.date_key, d.full_date
-        ORDER BY d.full_date;
-
-        CREATE OR REPLACE VIEW vw_payment_summary AS
-        SELECT
-            pm.payment_type,
-            SUM(f.sales_amount) AS total_sales
-        FROM fact_sales f
-        JOIN dim_payment_method pm
-            ON pm.payment_method_key = f.payment_method_key
-        GROUP BY pm.payment_type
-        ORDER BY total_sales DESC;
-
-        CREATE OR REPLACE VIEW vw_top_products AS
-        SELECT 
-            p.product_name,
-            SUM(f.sales_amount) AS total_sales,
-            SUM(f.quantity) AS total_qty
-        FROM fact_sales f
-        JOIN dim_product p ON p.product_key = f.product_key
-        GROUP BY p.product_name
-        ORDER BY total_sales DESC;
-
-        CREATE OR REPLACE VIEW fact_product_sales AS
-        SELECT 
-            p.product_key,
-            p.product_name,
-            p.category,
-            p.brand,
-            SUM(f.quantity) AS total_quantity_sold,
-            SUM(f.sales_amount) AS total_sales_amount,
-            SUM(f.discount_amount) AS total_discount,
-            COUNT(DISTINCT f.transaction_id) AS total_transactions
-        FROM fact_sales f
-        JOIN dim_product p ON f.product_key = p.product_key
-        GROUP BY p.product_key, p.product_name, p.category, p.brand
-        ORDER BY total_sales_amount DESC;
-
-        CREATE OR REPLACE VIEW fact_product_daily AS
-        SELECT 
-            f.date_key,
-            d.full_date,
-            f.product_key,
-            p.product_name,
-            SUM(f.quantity) AS qty_sold,
-            SUM(f.sales_amount) AS sales_amount
-        FROM fact_sales f
-        JOIN dim_date d ON f.date_key = d.date_key
-        JOIN dim_product p ON f.product_key = p.product_key
-        GROUP BY f.date_key, d.full_date, f.product_key, p.product_name
-        ORDER BY full_date, product_key;
-
-        CREATE OR REPLACE VIEW fact_product_store AS
-        SELECT
-            s.store_key,
-            s.store_name,
-            f.product_key,
-            p.product_name,
-            SUM(f.quantity) AS total_qty,
-            SUM(f.sales_amount) AS total_sales
-        FROM fact_sales f
-        JOIN dim_store s ON f.store_key = s.store_key
-        JOIN dim_product p ON f.product_key = p.product_key
-        GROUP BY s.store_key, s.store_name, f.product_key, p.product_name
-        ORDER BY s.store_key, total_sales DESC;
-
-        CREATE OR REPLACE VIEW fact_product_frequency AS
-        SELECT
-            p.product_key,
-            p.product_name,
-            COUNT(DISTINCT f.transaction_id) AS basket_count,
-            SUM(f.quantity) AS total_units
-        FROM fact_sales f
-        JOIN dim_product p ON f.product_key = p.product_key
-        GROUP BY p.product_key, p.product_name
-        ORDER BY basket_count DESC;
-
-        CREATE OR REPLACE VIEW fact_product_avg_price AS
-        SELECT
-            p.product_key,
-            p.product_name,
-            AVG(f.unit_price) AS avg_price,
-            MIN(f.unit_price) AS min_price,
-            MAX(f.unit_price) AS max_price
-        FROM fact_sales f
-        JOIN dim_product p ON f.product_key = p.product_key
-        GROUP BY p.product_key, p.product_name
-        ORDER BY avg_price DESC;
-    """)
-
     conn.commit()
     conn.close()
     print("Database initialized successfully!")

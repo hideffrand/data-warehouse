@@ -6,129 +6,252 @@ app = Flask(__name__)
 
 @app.route("/")
 def dashboard():
+    return render_template("index.html")
+
+
+@app.get("/api/daily-gross-profit")
+def api_daily_gross_profit():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
     conn = get_db()
     cur = conn.cursor()
 
-    # Daily sales
-    cur.execute(
-        "SELECT full_date, total_sales FROM vw_daily_sales ORDER BY full_date")
-    daily = cur.fetchall()
-
-    # Payment summary
-    cur.execute("SELECT payment_type, total_sales FROM vw_payment_summary")
-    payment = cur.fetchall()
-
-    # KPI
-    cur.execute("SELECT SUM(sales_amount) FROM fact_sales")
-    total_sales = cur.fetchone()[0]
-
-    cur.execute("SELECT SUM(quantity) FROM fact_sales")
-    total_qty = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM fact_sales")
-    total_trx = cur.fetchone()[0]
-
-    # ============ NEW QUERIES ============
-
-    # 1. Top 5 Products
     cur.execute("""
-        SELECT product_name, total_sales_amount 
-        FROM fact_product_sales 
-        ORDER BY total_sales_amount DESC 
-        LIMIT 5
-    """)
-    top_products = cur.fetchall()
+        SELECT d.full_date, SUM(fs.gross_profit) AS total_gross_profit
+        FROM fact_sales fs
+        JOIN dim_date d ON fs.date_key = d.date_key
+        WHERE d.full_date BETWEEN %s AND %s
+        GROUP BY d.full_date
+        ORDER BY d.full_date
+    """, (start, end))
 
-    # 2. Daily product sales
-    cur.execute("""
-        SELECT full_date, product_name, sales_amount
-        FROM fact_product_daily
-        ORDER BY full_date, product_name
-    """)
-    product_daily = cur.fetchall()
-
-    # 3. Sales by category
-    cur.execute("""
-        SELECT category, SUM(total_sales_amount)
-        FROM fact_product_sales
-        GROUP BY category
-    """)
-    sales_by_category = cur.fetchall()
-
-    # 4. Product basket frequency
-    cur.execute("""
-        SELECT product_name, basket_count
-        FROM fact_product_frequency
-        ORDER BY basket_count DESC
-        LIMIT 5
-    """)
-    basket_freq = cur.fetchall()
-
-    # 5. Promotion Performance Summary
-    cur.execute("""
-        SELECT 
-            p.promotion_name,
-            p.promotion_type,
-            COUNT(f.sales_key) AS trx_count,
-            SUM(f.sales_amount) AS total_sales
-        FROM fact_sales f
-        JOIN dim_promotion p ON p.promotion_key = f.promotion_key
-        WHERE f.promotion_key IS NOT NULL
-        GROUP BY p.promotion_name, p.promotion_type
-        ORDER BY total_sales DESC
-    """)
-    promo_summary = cur.fetchall()
-
-    # 6. Top Promotions by Sales Uplift
-    cur.execute("""
-        SELECT 
-            p.promotion_name,
-            SUM(f.discount_amount) AS total_discount,
-            SUM(f.sales_amount) AS total_sales
-        FROM fact_sales f
-        JOIN dim_promotion p ON p.promotion_key = f.promotion_key
-        GROUP BY p.promotion_name
-        ORDER BY total_sales DESC
-        LIMIT 5
-    """)
-    top_promotions = cur.fetchall()
-
-    # 7. Product Sales by Region
-    cur.execute("""
-        SELECT 
-            s.region,
-            SUM(f.sales_amount) AS total_sales
-        FROM fact_sales f
-        JOIN dim_store s ON s.store_key = f.store_key
-        GROUP BY s.region
-        ORDER BY total_sales DESC
-    """)
-    sales_by_region = cur.fetchall()
-
+    rows = cur.fetchall()
     conn.close()
 
-    # print("DAILY =", daily)
-    # print("PAYMENT =", payment)
-    # print("TOP =", top_products)
-    # print("CATEGORY =", sales_by_category)
-    # print("BASKET =", basket_freq)
-    print("PROMO SUMMARY", promo_summary)
+    return jsonify(rows)
 
-    return render_template(
-        "index.html",
-        total_trx=total_trx,
-        daily=daily,
-        payment=payment,
-        total_sales=total_sales,
-        total_qty=total_qty,
-        top_products=top_products,
-        product_daily=product_daily,
-        sales_by_category=sales_by_category,
-        basket_freq=basket_freq,
-        promo_summary=promo_summary,
-        top_promotions=top_promotions,
-        sales_by_region=sales_by_region
-    )
+
+@app.get("/api/payment-summary")
+def api_payment_summary():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 
+            pm.payment_type,
+            CASE 
+                WHEN SUM(fs.sales_amount) = 0 THEN 0
+                ELSE ROUND(SUM(fs.gross_profit) / SUM(fs.sales_amount), 4)
+            END AS margin
+        FROM fact_sales fs
+        JOIN dim_payment_method pm 
+            ON pm.payment_method_key = fs.payment_method_key
+        WHERE fs.date_key IN (
+            SELECT date_key 
+            FROM dim_date 
+            WHERE full_date BETWEEN %s AND %s
+        )
+        GROUP BY pm.payment_type
+        ORDER BY pm.payment_type;
+    """, (start, end))
+
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify(rows)
+
+
+@app.get("/api/top-products")
+def api_top_products():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT product_name, SUM(sales_amount)
+        FROM fact_sales fs
+        JOIN dim_product dp ON dp.product_key = fs.product_key
+        WHERE fs.date_key IN (
+            SELECT date_key FROM dim_date WHERE full_date BETWEEN %s AND %s
+        )
+        GROUP BY product_name
+        ORDER BY SUM(sales_amount) DESC
+        LIMIT 5;
+    """, (start, end))
+
+    return jsonify(cur.fetchall())
+
+
+@app.get("/api/category-sales")
+def api_category_sales():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT dp.category, SUM(fs.sales_amount)
+        FROM fact_sales fs
+        JOIN dim_product dp ON dp.product_key = fs.product_key
+        WHERE fs.date_key IN (
+            SELECT date_key FROM dim_date WHERE full_date BETWEEN %s AND %s
+        )
+        GROUP BY dp.category
+    """, (start, end))
+
+    return jsonify(cur.fetchall())
+
+
+@app.route("/api/daily-inventory")
+def api_daily_inventory():
+    start = request.args.get("start")
+    end = request.args.get("end")
+    warehouse = request.args.get("warehouse", type=int)
+    product = request.args.get("product", type=int)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    query = """
+        SELECT d.full_date, fs.on_hand_qty
+        FROM fact_daily_inventory_snapshot fs
+        JOIN dim_date d ON fs.date_key = d.date_key
+        WHERE d.full_date BETWEEN %s AND %s
+    """
+    params = [start, end]
+
+    if warehouse:
+        query += " AND fs.warehouse_key = %s"
+        params.append(warehouse)
+    if product:
+        query += " AND fs.product_key = %s"
+        params.append(product)
+
+    query += " ORDER BY d.full_date"
+
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+    conn.close()
+
+    # Return as JSON [{date: ..., qty: ...}, ...]
+    data = [{"date": str(r[0]), "on_hand_qty": r[1]} for r in rows]
+    return jsonify(data)
+
+
+@app.route("/api/inventory-movement")
+def api_inventory_movement():
+    start = request.args.get("start")
+    end = request.args.get("end")
+    warehouse = request.args.get("warehouse", type=int)
+    product = request.args.get("product", type=int)
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    query = """
+        SELECT d.full_date, SUM(fs.quantity) AS total_qty
+        FROM fact_inventory_movement fs
+        JOIN dim_date d ON fs.date_key = d.date_key
+        WHERE d.full_date BETWEEN %s AND %s
+    """
+    params = [start, end]
+
+    if warehouse:
+        query += " AND fs.warehouse_key = %s"
+        params.append(warehouse)
+    if product:
+        query += " AND fs.product_key = %s"
+        params.append(product)
+
+    query += " GROUP BY d.full_date ORDER BY d.full_date"
+
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+    conn.close()
+
+    data = [{"date": str(r[0]), "total_qty": r[1]} for r in rows]
+    return jsonify(data)
+
+
+@app.route("/api/inventory-movement-warehouse")
+def api_inventory_movement_warehouse():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    query = """
+        SELECT w.warehouse_name, SUM(fs.quantity) AS total_qty
+        FROM fact_inventory_movement fs
+        JOIN dim_warehouse w ON fs.warehouse_key = w.warehouse_key
+        JOIN dim_date d ON fs.date_key = d.date_key
+        WHERE d.full_date BETWEEN %s AND %s
+        GROUP BY w.warehouse_name
+        ORDER BY w.warehouse_name
+    """
+
+    cur.execute(query, (start, end))
+    rows = cur.fetchall()
+    conn.close()
+
+    data = [{"warehouse": r[0], "total_qty": r[1]} for r in rows]
+    return jsonify(data)
+
+
+@app.route("/api/inventory-movement-stacked")
+def api_inventory_movement_stacked():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Ambil sum per date dan per warehouse
+    cur.execute("""
+        SELECT d.full_date, w.warehouse_name, SUM(fs.quantity) AS total_qty
+        FROM fact_inventory_movement fs
+        JOIN dim_date d ON fs.date_key = d.date_key
+        JOIN dim_warehouse w ON fs.warehouse_key = w.warehouse_key
+        WHERE d.full_date BETWEEN %s AND %s
+        GROUP BY d.full_date, w.warehouse_name
+        ORDER BY d.full_date, w.warehouse_name
+    """, (start, end))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    # Convert ke format: {dates: [...], datasets: [{warehouse, data: [...]}, ...]}
+    data_dict = {}
+    warehouses = set()
+    for date, wh, qty in rows:
+        if date not in data_dict:
+            data_dict[date] = {}
+        data_dict[date][wh] = qty
+        warehouses.add(wh)
+
+    warehouses = sorted(warehouses)
+    dates = sorted(data_dict.keys())
+
+    datasets = []
+    for wh in warehouses:
+        data = []
+        for date in dates:
+            data.append(data_dict[date].get(wh, 0))
+        datasets.append({"label": wh, "data": data})
+
+    return jsonify({"labels": dates, "datasets": datasets})
+
+
+@app.route("/warehouse")
+def inventory_chart():
+    return render_template("warehouse.html")
 
 
 @app.get("/facts")
@@ -170,91 +293,57 @@ def facts_data():
     return jsonify(results)
 
 
-@app.route("/snapshot")
-def snapshot():
-    conn = get_db()
-    cur = conn.cursor()
-
-    # Snapshot 1: dim_date summary
-    cur.execute("""
-        SELECT 
-            COUNT(*) AS total_dates,
-            MIN(full_date) AS start_date,
-            MAX(full_date) AS end_date
-        FROM dim_date;
-    """)
-    date_snapshot = cur.fetchone()
-
-    # Snapshot 2: dim_store summary
-    cur.execute("""
-        SELECT 
-            COUNT(*) AS total_stores,
-            COUNT(DISTINCT city) AS unique_cities,
-            COUNT(DISTINCT region) AS unique_regions
-        FROM dim_store;
-    """)
-    store_snapshot = cur.fetchone()
-
-    conn.close()
-
-    return render_template(
-        "snapshot.html",
-        date_snapshot=date_snapshot,
-        store_snapshot=store_snapshot,
-    )
+# @app.route("/warehouse")
+# def warehouse():
+#     return render_template("warehouse.html")
 
 
-@app.route("/warehouse")
-def warehouse():
-    return render_template("warehouse.html")
+# @app.route("/warehouse/data")
+# def warehouse_data():
+#     limit = int(request.args.get("limit", 25))
+#     conn = get_db()
+#     cur = conn.cursor()
 
+#     tables = {}
 
-@app.route("/warehouse/data")
-def warehouse_data():
-    limit = int(request.args.get("limit", 25))
-    conn = get_db()
-    cur = conn.cursor()
+#     # Snapshot Fact
+#     cur.execute(f"""
+#         SELECT date_key, warehouse_key, product_key, on_hand_qty
+#         -- ,reserved_qty, inbound_qty
+#         FROM fact_daily_inventory_snapshot
+#         ORDER BY date_key DESC
+#         LIMIT {limit};
+#     """)
+#     rows = cur.fetchall()
+#     columns = [desc[0] for desc in cur.description]
+#     tables["Daily Inventory Snapshot"] = {"columns": columns, "rows": rows}
 
-    tables = {}
+#     # Accumulation Fact
+#     cur.execute(f"""
+#         SELECT movement_type, date_key, warehouse_key, product_key, quantity, remarks
+#         FROM fact_inventory_movement
+#         ORDER BY date_key DESC
+#         LIMIT {limit};
+#     """)
+#     rows = cur.fetchall()
+#     columns = [desc[0] for desc in cur.description]
+#     tables["Inventory Movement (Accumulation Fact)"] = {
+#         "columns": columns, "rows": rows}
 
-    # Snapshot Fact
-    cur.execute(f"""
-        SELECT date_key, warehouse_key, product_key, on_hand_qty
-        -- ,reserved_qty, inbound_qty
-        FROM fact_daily_inventory_snapshot
-        ORDER BY date_key DESC
-        LIMIT {limit};
-    """)
-    rows = cur.fetchall()
-    columns = [desc[0] for desc in cur.description]
-    tables["Daily Inventory Snapshot"] = {"columns": columns, "rows": rows}
+#     # Semi-additive Fact
+#     cur.execute(f"""
+#         SELECT warehouse_key, product_key, ending_balance, last_updated
+#         FROM fact_inventory_balance
+#         ORDER BY last_updated DESC
+#         LIMIT {limit};
+#     """)
+#     rows = cur.fetchall()
+#     columns = [desc[0] for desc in cur.description]
+#     tables["Inventory Balance (Semi-additive Fact)"] = {
+#         "columns": columns, "rows": rows}
 
-    # Accumulation Fact
-    cur.execute(f"""
-        SELECT movement_type, date_key, warehouse_key, product_key, quantity, remarks
-        FROM fact_inventory_movement
-        ORDER BY date_key DESC
-        LIMIT {limit};
-    """)
-    rows = cur.fetchall()
-    columns = [desc[0] for desc in cur.description]
-    tables["Inventory Movement (Accumulation Fact)"] = {
-        "columns": columns, "rows": rows}
-
-    # Semi-additive Fact
-    cur.execute(f"""
-        SELECT warehouse_key, product_key, ending_balance, last_updated
-        FROM fact_inventory_balance
-        ORDER BY last_updated DESC
-        LIMIT {limit};
-    """)
-    rows = cur.fetchall()
-    columns = [desc[0] for desc in cur.description]
-    tables["Inventory Balance (Semi-additive Fact)"] = {
-        "columns": columns, "rows": rows}
-
-    conn.close()
-    return jsonify(tables)
+#     conn.close()
+#     return jsonify(tables)
 
 
 @app.route("/dimensions")
