@@ -20,6 +20,7 @@ def init_database():
         DROP TABLE IF EXISTS fact_inventory_balance CASCADE;
         DROP TABLE IF EXISTS fact_inventory_movement CASCADE;
         DROP TABLE IF EXISTS fact_daily_inventory_snapshot CASCADE;
+        DROP TABLE IF EXISTS fact_inventory_daily_balance CASCADE;
         DROP TABLE IF EXISTS fact_promotion CASCADE;
         DROP TABLE IF EXISTS dim_promotion CASCADE;
         DROP TABLE IF EXISTS fact_sales CASCADE;
@@ -147,11 +148,19 @@ def init_database():
             last_updated TIMESTAMP,
             PRIMARY KEY (warehouse_key, product_key)
         );
+
+        CREATE TABLE fact_inventory_daily_balance (
+            date_key INT REFERENCES dim_date(date_key),
+            warehouse_key INT REFERENCES dim_warehouse(warehouse_key),
+            product_key INT REFERENCES dim_product(product_key),
+            ending_balance INT,
+            PRIMARY KEY(date_key, warehouse_key, product_key)
+        );
     """)
 
     print("Seeding dim_date...")
-    start = date(2025, 10, 1)
-    end = date(2025, 11, 30)
+    start = date(2025, 1, 1)
+    end = date(2025, 12, 30)
 
     dates = []
     current = start
@@ -384,8 +393,8 @@ def init_database():
     print("Seeding fact_daily_inventory_snapshot...")
     snapshot_records = []
 
-    snapshot_start = date(2025, 10, 1)
-    snapshot_end = date(2025, 11, 30)
+    snapshot_start = date(2025, 1, 1)
+    snapshot_end = date(2025, 12, 30)
 
     current = snapshot_start
 
@@ -447,6 +456,23 @@ def init_database():
                 (warehouse_key, product_key, ending_balance, last_updated)
             VALUES (%s, %s, %s, NOW())
         """, (w_key, p_key, balance))
+
+    # Asumsi koneksi cur tersedia
+    snapshot_start = date(2025, 1, 1)
+    snapshot_end = date(2025, 12, 30)
+
+    current = snapshot_start
+    while current <= snapshot_end:
+        date_key = int(current.strftime("%Y%m%d"))
+        for warehouse_key in range(1, 5):  # misal 4 warehouse
+            for product_key in range(1, 21):  # misal 20 produk
+                ending_balance = random.randint(50, 500)
+                cur.execute("""
+                    INSERT INTO fact_inventory_daily_balance
+                    (date_key, warehouse_key, product_key, ending_balance)
+                    VALUES (%s, %s, %s, %s)
+                """, (date_key, warehouse_key, product_key, ending_balance))
+        current += timedelta(days=1)
 
     print("SEED DONE!")
     conn.commit()

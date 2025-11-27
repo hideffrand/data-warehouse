@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Warehouse Inventory Charts</title>
+    <title>Warehouse Inventory Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
@@ -21,8 +21,8 @@
       </div>
     </div>
 
-    <!-- Snapshot Filter -->
-    <div class="grid grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Snapshot Filter + Chart + Table -->
       <div>
         <div class="mb-4 flex gap-4 items-end">
           <div>
@@ -53,14 +53,26 @@
           </button>
         </div>
 
-        <!-- Inventory Snapshot Chart -->
         <div class="bg-white p-4 rounded-lg shadow mb-6">
           <h2 class="font-semibold mb-2">Daily Inventory Snapshot</h2>
           <canvas id="inventoryChart" width="800" height="400"></canvas>
         </div>
+
+        <!-- <div class="bg-white p-4 rounded-lg shadow">
+          <h2 class="font-semibold mb-2">Snapshot Table</h2>
+          <table class="min-w-full border-collapse border border-gray-200">
+            <thead>
+              <tr>
+                <th class="border px-2 py-1 bg-gray-100">Date</th>
+                <th class="border px-2 py-1 bg-gray-100">On-hand Quantity</th>
+              </tr>
+            </thead>
+            <tbody id="snapshotTableBody"></tbody>
+          </table>
+        </div> -->
       </div>
 
-      <!-- Movement Filter (Stacked per Warehouse) -->
+      <!-- Movement Filter + Stacked Chart -->
       <div>
         <div class="mb-4 flex gap-4 items-end">
           <div>
@@ -91,12 +103,56 @@
           </button>
         </div>
 
-        <!-- Inventory Movement Stacked Bar Chart -->
         <div class="bg-white p-4 rounded-lg shadow">
           <h2 class="font-semibold mb-2">
-            Inventory Movement per Warehouse (Stacked, Accumulation Facts Fact 3 Dims)
+            Inventory Movement per Warehouse (Accumulative Fact 3 Dims)
           </h2>
           <canvas id="movementStackedChart" width="800" height="400"></canvas>
+        </div>
+      </div>
+
+      <!-- Semi-additive / Balance Chart -->
+      <div class="col-span-1 lg:col-span-2">
+        <!-- <div class="mb-4 flex gap-4 items-end">
+          <div>
+            <label class="block text-sm font-medium mb-1"
+              >Daily Balance Start Date</label
+            >
+            <input
+              type="date"
+              id="semiStart"
+              class="border rounded px-2 py-1"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1"
+              >Daily Balance End Date</label
+            >
+            <input type="date" id="semiEnd" class="border rounded px-2 py-1" />
+          </div>
+          <button
+            id="loadSemiBtn"
+            class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+          >
+            Load Daily Balance
+          </button>
+        </div> -->
+
+        <div class="bg-white p-4 rounded-lg shadow">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold mb-2">Semi-additive Fact</h2>
+            <label for="warehouseSelect" class="block mb-2"
+              >Select Warehouse:
+              <select id="warehouseSelect" class="border p-2 rounded">
+                <!-- options akan diisi dengan JS -->
+              </select>
+            </label>
+          </div>
+
+          <div class="bg-white p-4 rounded-lg shadow">
+            <h2 class="font-semibold mb-2">Ending Balance per Product</h2>
+            <canvas id="semiChart" width="1200" height="400"></canvas>
+          </div>
         </div>
       </div>
     </div>
@@ -104,10 +160,19 @@
     <script>
       let inventoryChart = null;
       let movementStackedChart = null;
+      let semiChart = null;
       const warehouse = 1;
       const product = 1;
+      const defaultStart = "2025-10-01";
+      const defaultEnd = "2025-11-30";
 
-      // Snapshot Chart
+      document.getElementById("snapshotStart").value = defaultStart;
+      document.getElementById("snapshotEnd").value = defaultEnd;
+      document.getElementById("movementStart").value = defaultStart;
+      document.getElementById("movementEnd").value = defaultEnd;
+      // document.getElementById("semiStart").value = defaultStart;
+      // document.getElementById("semiEnd").value = defaultEnd;
+
       async function loadSnapshot(start, end) {
         const res = await fetch(
           `/api/daily-inventory?start=${start}&end=${end}&warehouse=${warehouse}&product=${product}`
@@ -116,6 +181,7 @@
         const labels = data.map((d) => d.date);
         const qtys = data.map((d) => d.on_hand_qty);
 
+        // Chart
         const ctx = document.getElementById("inventoryChart").getContext("2d");
         if (inventoryChart) inventoryChart.destroy();
         inventoryChart = new Chart(ctx, {
@@ -139,55 +205,118 @@
             },
           },
         });
+
+        // Table
+        const tbody = document.getElementById("snapshotTableBody");
+        tbody.innerHTML = "";
+        data.forEach((d) => {
+          const tr = document.createElement("tr");
+          const tdDate = document.createElement("td");
+          tdDate.innerText = d.date;
+          tdDate.className = "border px-2 py-1";
+          const tdQty = document.createElement("td");
+          tdQty.innerText = d.on_hand_qty;
+          tdQty.className = "border px-2 py-1";
+          tr.appendChild(tdDate);
+          tr.appendChild(tdQty);
+          tbody.appendChild(tr);
+        });
       }
 
-      // Movement Stacked Bar Chart per Warehouse
       async function loadMovementStacked(start, end) {
         const res = await fetch(
           `/api/inventory-movement-stacked?start=${start}&end=${end}`
         );
         const data = await res.json(); // {labels: [...dates], datasets: [{label: warehouse, data: [...]}, ...]}
-
         const ctx = document
           .getElementById("movementStackedChart")
           .getContext("2d");
         if (movementStackedChart) movementStackedChart.destroy();
-
         movementStackedChart = new Chart(ctx, {
           type: "bar",
           data: {
             labels: data.labels,
-            datasets: data.datasets.map((ds) => ({
+            datasets: data.datasets.map((ds, i) => ({
               label: ds.label,
               data: ds.data,
-              backgroundColor: `hsl(${Math.random() * 120}, 70%, 50%)`, // random color per warehouse
+              backgroundColor: `hsl(${(i * 60) % 360},70%,50%)`,
             })),
           },
           options: {
-            responsive: true,
-            plugins: { legend: { position: "top" } },
             scales: {
               x: { stacked: true, title: { display: true, text: "Date" } },
-              y: {
-                stacked: true,
-                title: { display: true, text: "Total Quantity" },
+              y: { stacked: true, title: { display: true, text: "Quantity" } },
+            },
+            responsive: true,
+            plugins: { legend: { position: "top" } },
+          },
+        });
+      }
+
+      // let semiChart;
+      // const defaultStart = "2025-11-01"; // contoh
+      // const defaultEnd = "2025-11-28";
+
+      async function loadWarehouseOptions() {
+        const res = await fetch(
+          `/api/inventory-daily-balance?start=${defaultStart}&end=${defaultEnd}`
+        );
+        const data = await res.json();
+        const warehouses = [...new Set(data.map((d) => d.warehouse))];
+        const select = document.getElementById("warehouseSelect");
+        select.innerHTML = warehouses
+          .map((w) => `<option value="${w}">${w}</option>`)
+          .join("");
+        select.addEventListener("change", () => loadSemi());
+        loadSemi(); // load chart pertama kali
+      }
+
+      async function loadSemi() {
+        const warehouse = document.getElementById("warehouseSelect").value;
+        const res = await fetch(
+          `/api/inventory-daily-balance?start=${defaultStart}&end=${defaultEnd}`
+        );
+        const data = await res.json();
+
+        // filter by selected warehouse
+        const filtered = data.filter((d) => d.warehouse === warehouse);
+
+        const products = [...new Set(filtered.map((d) => d.product))].sort();
+        const balances = products.map((p) => {
+          const entry = filtered.find((d) => d.product === p);
+          return entry ? entry.ending_balance : 0;
+        });
+
+        const ctx = document.getElementById("semiChart").getContext("2d");
+        if (semiChart) semiChart.destroy();
+        semiChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: products,
+            datasets: [
+              {
+                label: `Ending Balance - ${warehouse}`,
+                data: balances,
+                backgroundColor: products.map(
+                  (_, idx) => `hsl(${(idx * 60) % 360},70%,50%)`
+                ),
               },
+            ],
+          },
+          options: {
+            scales: {
+              y: { title: { display: true, text: "Ending Balance" } },
+              x: { title: { display: true, text: "Product" } },
             },
           },
         });
       }
 
       // Default load
-      const defaultStart = "2025-10-01";
-      const defaultEnd = "2025-11-30";
-
-      document.getElementById("snapshotStart").value = defaultStart;
-      document.getElementById("snapshotEnd").value = defaultEnd;
-      document.getElementById("movementStart").value = defaultStart;
-      document.getElementById("movementEnd").value = defaultEnd;
-
+      loadWarehouseOptions();
       loadSnapshot(defaultStart, defaultEnd);
       loadMovementStacked(defaultStart, defaultEnd);
+      loadSemi();
 
       // Event listeners
       document
@@ -197,7 +326,6 @@
           const end = document.getElementById("snapshotEnd").value;
           if (start && end) loadSnapshot(start, end);
         });
-
       document
         .getElementById("loadMovementBtn")
         .addEventListener("click", () => {
@@ -205,6 +333,11 @@
           const end = document.getElementById("movementEnd").value;
           if (start && end) loadMovementStacked(start, end);
         });
+      // document.getElementById("loadSemiBtn").addEventListener("click", () => {
+      //   const start = document.getElementById("semiStart").value;
+      //   const end = document.getElementById("semiEnd").value;
+      //   if (start && end) loadSemi(start, end);
+      // });
     </script>
   </body>
 </html>

@@ -108,6 +108,46 @@ def api_category_sales():
     return jsonify(cur.fetchall())
 
 
+@app.route("/api/daily-inventory-all")
+def api_daily_inventory_all():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    query = """
+        SELECT 
+            d.full_date,
+            w.warehouse_name,
+            p.product_name,
+            fs.on_hand_qty,
+            fs.reserved_qty,
+            fs.inbound_qty
+        FROM fact_daily_inventory_snapshot fs
+        JOIN dim_date d ON fs.date_key = d.date_key
+        JOIN dim_warehouse w ON fs.warehouse_key = w.warehouse_key
+        JOIN dim_product p ON fs.product_key = p.product_key
+        WHERE d.full_date BETWEEN %s AND %s
+        ORDER BY d.full_date, w.warehouse_name, p.product_name
+    """
+    cur.execute(query, (start, end))
+    rows = cur.fetchall()
+    conn.close()
+
+    data = [
+        {
+            "date": str(r[0]),
+            "warehouse": r[1],
+            "product": r[2],
+            "on_hand_qty": r[3],
+            "reserved_qty": r[4],
+            "inbound_qty": r[5]
+        } for r in rows
+    ]
+    return jsonify(data)
+
+
 @app.route("/api/daily-inventory")
 def api_daily_inventory():
     start = request.args.get("start")
@@ -298,52 +338,123 @@ def facts_data():
 #     return render_template("warehouse.html")
 
 
-# @app.route("/warehouse/data")
-# def warehouse_data():
-#     limit = int(request.args.get("limit", 25))
-#     conn = get_db()
-#     cur = conn.cursor()
+@app.route("/warehouse/data")
+def warehouse_data():
+    limit = int(request.args.get("limit", 25))
+    conn = get_db()
+    cur = conn.cursor()
 
-#     tables = {}
+    tables = {}
 
-#     # Snapshot Fact
-#     cur.execute(f"""
-#         SELECT date_key, warehouse_key, product_key, on_hand_qty
-#         -- ,reserved_qty, inbound_qty
-#         FROM fact_daily_inventory_snapshot
-#         ORDER BY date_key DESC
-#         LIMIT {limit};
-#     """)
-#     rows = cur.fetchall()
-#     columns = [desc[0] for desc in cur.description]
-#     tables["Daily Inventory Snapshot"] = {"columns": columns, "rows": rows}
+    # Snapshot Fact
+    cur.execute(f"""
+        SELECT date_key, warehouse_key, product_key, on_hand_qty
+        -- ,reserved_qty, inbound_qty
+        FROM fact_daily_inventory_snapshot
+        ORDER BY date_key DESC
+        LIMIT {limit};
+    """)
+    rows = cur.fetchall()
+    columns = [desc[0] for desc in cur.description]
+    tables["Daily Inventory Snapshot"] = {"columns": columns, "rows": rows}
 
-#     # Accumulation Fact
-#     cur.execute(f"""
-#         SELECT movement_type, date_key, warehouse_key, product_key, quantity, remarks
-#         FROM fact_inventory_movement
-#         ORDER BY date_key DESC
-#         LIMIT {limit};
-#     """)
-#     rows = cur.fetchall()
-#     columns = [desc[0] for desc in cur.description]
-#     tables["Inventory Movement (Accumulation Fact)"] = {
-#         "columns": columns, "rows": rows}
+    # # Accumulation Fact
+    # cur.execute(f"""
+    #     SELECT movement_type, date_key, warehouse_key, product_key, quantity, remarks
+    #     FROM fact_inventory_movement
+    #     ORDER BY date_key DESC
+    #     LIMIT {limit};
+    # """)
+    # rows = cur.fetchall()
+    # columns = [desc[0] for desc in cur.description]
+    # tables["Inventory Movement (Accumulation Fact)"] = {
+    #     "columns": columns, "rows": rows}
 
-#     # Semi-additive Fact
-#     cur.execute(f"""
-#         SELECT warehouse_key, product_key, ending_balance, last_updated
-#         FROM fact_inventory_balance
-#         ORDER BY last_updated DESC
-#         LIMIT {limit};
-#     """)
-#     rows = cur.fetchall()
-#     columns = [desc[0] for desc in cur.description]
-#     tables["Inventory Balance (Semi-additive Fact)"] = {
-#         "columns": columns, "rows": rows}
+    # # Semi-additive Fact
+    # cur.execute(f"""
+    #     SELECT warehouse_key, product_key, ending_balance, last_updated
+    #     FROM fact_inventory_balance
+    #     ORDER BY last_updated DESC
+    #     LIMIT {limit};
+    # """)
+    # rows = cur.fetchall()
+    # columns = [desc[0] for desc in cur.description]
+    # tables["Inventory Balance (Semi-additive Fact)"] = {
+    #     "columns": columns, "rows": rows}
 
-#     conn.close()
-#     return jsonify(tables)
+    conn.close()
+    return jsonify(tables)
+
+
+@app.route("/api/inventory-semi")
+def api_inventory_semi():
+    conn = get_db()
+    cur = conn.cursor()
+
+    query = """
+        SELECT 
+            fsb.warehouse_key,
+            w.warehouse_name,
+            fsb.product_key,
+            p.product_name,
+            fsb.ending_balance
+        FROM fact_inventory_balance fsb
+        JOIN dim_warehouse w ON fsb.warehouse_key = w.warehouse_key
+        JOIN dim_product p ON fsb.product_key = p.product_key
+        ORDER BY w.warehouse_name, p.product_name
+    """
+
+    cur.execute(query)
+    rows = cur.fetchall()
+    conn.close()
+
+    data = [
+        {
+            "warehouse_key": r[0],
+            "warehouse": r[1],
+            "product_key": r[2],
+            "product": r[3],
+            "ending_balance": r[4]
+        } for r in rows
+    ]
+    return jsonify(data)
+
+
+@app.route("/api/inventory-daily-balance")
+def api_inventory_daily_balance():
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    query = """
+        SELECT 
+            d.full_date,
+            w.warehouse_name,
+            p.product_name,
+            fibd.ending_balance
+        FROM fact_inventory_daily_balance fibd
+        JOIN dim_date d ON fibd.date_key = d.date_key
+        JOIN dim_warehouse w ON fibd.warehouse_key = w.warehouse_key
+        JOIN dim_product p ON fibd.product_key = p.product_key
+        WHERE d.full_date BETWEEN %s AND %s
+        ORDER BY d.full_date, w.warehouse_name, p.product_name
+    """
+
+    cur.execute(query, (start, end))
+    rows = cur.fetchall()
+    conn.close()
+
+    data = [
+        {
+            "date": str(r[0]),
+            "warehouse": r[1],
+            "product": r[2],
+            "ending_balance": r[3]
+        } for r in rows
+    ]
+    return jsonify(data)
 
 
 @app.route("/dimensions")
