@@ -303,29 +303,44 @@ def facts_page():
 def facts_data():
     limit = request.args.get("limit", 25, type=int)
 
-    fact_tables = [
-        "fact_sales",
-        "fact_promotion"
-    ]
-
-    results = {}
-
     conn = get_db()
     cur = conn.cursor()
 
-    for tbl in fact_tables:
-        try:
-            cur.execute(f"SELECT * FROM {tbl} LIMIT %s", (limit,))
-            colnames = [desc[0] for desc in cur.description]
-            rows = cur.fetchall()
-        except Exception:
-            colnames = []
-            rows = []
+    results = {}
 
-        results[tbl] = {
-            "columns": colnames,
-            "rows": rows
-        }
+    # 1️⃣ fact_sales tetap biasa
+    try:
+        cur.execute("SELECT * FROM fact_sales LIMIT %s", (limit,))
+        colnames = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+    except Exception:
+        colnames = []
+        rows = []
+
+    results["fact_sales"] = {"columns": colnames, "rows": rows}
+
+    # 2️⃣ fact_promotion dengan join untuk nama promo dan store/warehouse
+    try:
+        query = f"""
+            SELECT fp.promotion_key,
+                   dp.promotion_name,
+                   fp.date_key,
+                   ds.store_name AS store_or_warehouse_name
+            FROM fact_promotion fp
+            LEFT JOIN dim_promotion dp
+                ON fp.promotion_key = dp.promotion_key
+            LEFT JOIN dim_store ds
+                ON fp.store_key = ds.store_key
+            LIMIT %s
+        """
+        cur.execute(query, (limit,))
+        colnames = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+    except Exception:
+        colnames = []
+        rows = []
+
+    results["fact_promotion"] = {"columns": colnames, "rows": rows}
 
     cur.close()
     conn.close()

@@ -315,69 +315,67 @@ def init_database():
     fact_rows = []
     transaction_counter = 1
 
-    for dkey, full_date, *_ in dates:
+    # ambil cost per produk
+    cur.execute("SELECT product_key, cost_per_unit FROM dim_product")
+    cost_map = {pk: float(cost) for (pk, cost) in cur.fetchall()}
 
-        # generate jumlah transaksi per hari
+    for dkey, full_date, *_ in dates:
+        date_str = full_date.strftime(
+            "%Y-%m-%d") if hasattr(full_date, "strftime") else str(full_date)
+
+        # jumlah transaksi per hari
         for _ in range(random.randint(100, 120)):
             transaction_id = f"TX{transaction_counter:06d}"
             transaction_counter += 1
 
             # 1 transaksi bisa punya 1-4 item
             for __ in range(random.randint(1, 4)):
-
-                product_key = random.randint(1, len(products))
+                product_key = random.choice(list(cost_map.keys()))
                 store_key = random.randint(1, len(stores))
                 customer_key = random.randint(1, len(customers))
                 payment_key = random.randint(1, len(payment_methods))
 
-                # Tentukan promo aktif
+                # cek promo aktif
                 active_promos = [
-                    p_id for (p_id, _, _, _, start, end) in [
-                        (i+1, *promotions[i]) for i in range(len(promotions))
-                    ]
-                    if promotions[p_id-1][3] <= str(full_date) <= promotions[p_id-1][4]
-                ]
-
+                    i+1 for i, p in enumerate(promotions) if p[3] <= date_str <= p[4]]
                 promotion_key = random.choice(
-                    active_promos) if active_promos else None
+                    active_promos) if active_promos else 1
 
-                # Random sales
                 quantity = random.randint(1, 120)
-                unit_price = random.randint(1000, 35000)
+
+                # pastikan unit_price tidak lebih kecil dari cost_per_unit
+                unit_price = max(random.randint(1000, 35000),
+                                 int(cost_map[product_key]))
                 sales_amount = quantity * unit_price
+                cost_amount = quantity * cost_map[product_key]
 
-                # Hitung diskon (pakai promo atau random kecil)
-                if promotion_key:
-                    discount_pct = promotions[promotion_key - 1][2]
-                    discount = sales_amount * discount_pct / 100
-                else:
-                    discount = random.choice([0, 0, 500])
+                # discount
+                discount = sales_amount * \
+                    promotions[promotion_key-1][2] / \
+                    100 if promotion_key else random.choice([0, 0, 500])
 
-                # Ambil cost dari dim_product
-                cost_per_unit = cost_map[product_key]
-                cost_amount = quantity * cost_per_unit
+                # gross profit >= 0
+                gross_profit = max(sales_amount - cost_amount, 0)
 
-                # Hitung gross profit
-                gross_profit = sales_amount - cost_amount
+                # margin_percent >= 0
+                margin_percent = (gross_profit / sales_amount *
+                                  100) if sales_amount != 0 else 0
 
                 fact_rows.append((
                     dkey, product_key, store_key, customer_key,
                     payment_key, promotion_key, transaction_id,
                     quantity, unit_price, sales_amount, discount,
-                    gross_profit
+                    gross_profit, margin_percent
                 ))
 
-    # ======================================================
-    # EXECUTE INSERT
-    # ======================================================
-
+    # insert ke DB
     cur.executemany("""
         INSERT INTO fact_sales 
         (date_key, product_key, store_key, customer_key, 
         payment_method_key, promotion_key, transaction_id,
         quantity, unit_price, sales_amount, discount_amount,
-        gross_profit)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        gross_profit, margin_percent)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, fact_rows)
 
     print("Seeding dim_warehouse...")
