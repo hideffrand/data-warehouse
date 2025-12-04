@@ -1,0 +1,124 @@
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    platform: linux/amd64
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - namenode-data:/hadoop/dfs/name
+    networks:
+      - hadoop
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    platform: linux/amd64
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    volumes:
+      - datanode1-data:/hadoop/dfs/data
+    networks:
+      - hadoop
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    platform: linux/amd64
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    volumes:
+      - datanode2-data:/hadoop/dfs/data
+    networks:
+      - hadoop
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    platform: linux/amd64
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    volumes:
+      - datanode3-data:/hadoop/dfs/data
+    networks:
+      - hadoop
+
+  hive-metastore-db:
+    image: bde2020/hive-metastore-postgresql:2.3.0
+    container_name: hive-metastore-db
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: hive
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - hive-metastore-db-data:/var/lib/postgresql/data
+    networks:
+      - hadoop
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    platform: linux/amd64
+    depends_on:
+      hive-metastore-db:
+        condition: service_healthy
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore-db:5432
+      # ADD THIS LINE BELOW:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      # Existing config...
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionURL=jdbc:postgresql://hive-metastore-db:5432/hive
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionDriverName=org.postgresql.Driver
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionUserName=postgres
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionPassword=postgres
+    command: /opt/hive/bin/hive --service metastore
+    ports:
+      - "9083:9083"
+    networks:
+      - hadoop
+
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    platform: linux/amd64
+    depends_on:
+      hive-metastore:
+        condition: service_started
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore:9083
+      # ADD THIS LINE BELOW:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      # Existing config...
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionURL=jdbc:postgresql://hive-metastore-db:5432/hive
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionDriverName=org.postgresql.Driver
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionUserName=postgres
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionPassword=postgres
+    ports:
+      - "10000:10000"
+    networks:
+      - hadoop
+
+networks:
+  hadoop:
+
+volumes:
+  namenode-data:
+  datanode1-data:
+  datanode2-data:
+  datanode3-data:
+  hive-metastore-db-data:

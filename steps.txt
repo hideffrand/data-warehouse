@@ -1,0 +1,106 @@
+# 1. Hentikan semua kontainer
+docker compose down
+
+# 2. Hapus volume yang digunakan oleh hive-metastore-db untuk memastikan database bersih
+# (Asumsi nama volume Anda adalah hive-metastore-db-data)
+docker volume rm hive-metastore-db-data
+
+# 3. Jalankan kembali semua service KECUALI hive-metastore dan hive-server
+# Kita hanya perlu DB Metastore dan HDFS running untuk inisialisasi.
+docker compose up -d namenode datanode1 datanode2 datanode3 hive-metastore-db
+
+
+# Inisialisasi Skema: Ini HARUS menghasilkan "schematool completed"
+docker compose exec hive-metastore /opt/hive/bin/schematool -dbType postgres -initSchema
+
+
+# Restart semua service untuk memaksa hive-metastore dan hive-server start
+docker compose restart
+
+# TUNGGU (KRUSIAL)
+echo "Menunggu Hive Server stabil (2-3 menit)..."
+sleep 180 
+
+# Cek log hive-server, cari pesan "HiveServer2 started"
+docker compose logs hive-server | tail
+
+
+
+# Coba koneksi Beeline menggunakan NAMA SERVICE
+docker compose exec hive-server /opt/hive/bin/beeline -u jdbc:hive2://hive-server:10000
+
+docker cp raw_sales.csv hive-server:/opt/hive/raw_sales.csv
+
+
+# 1. Salin CSV dari host lokal ke kontainer namenode
+docker cp raw_sales.csv namenode:/tmp/raw_sales.csv
+
+# 2. Masuk ke kontainer namenode
+docker compose exec namenode bash
+
+# 3. Buat direktori tujuan di HDFS
+hdfs dfs -mkdir -p /indomaret/raw/sales
+
+# 4. Muat file dari /tmp di kontainer ke HDFS
+# Perhatian: HDFS Port adalah 8020 sesuai konfigurasi Anda
+hdfs dfs -put /tmp/raw_sales.csv /indomaret/raw/sales/
+
+# 5. Verifikasi
+hdfs dfs -ls /indomaret/raw/sales/
+
+# Keluar dari kontainer namenode
+exit
+
+
+# Masuk ke CLI Beeline menggunakan NAMA SERVICE
+docker compose exec hive-server /opt/hive/bin/beeline -u jdbc:hive2://hive-server:10000
+
+
+-- Menggunakan database default
+USE default;
+
+-- 1. Membuat tabel eksternal yang menunjuk ke file di HDFS.
+-- Karena datanya sudah di HDFS (Langkah B), ini adalah 'Schema on Read'.
+CREATE EXTERNAL TABLE IF NOT EXISTS raw_sales (
+    transaction_id STRING,
+    tx_date DATE,
+    store_id STRING,
+    product_sku STRING,
+    customer_id STRING,
+    payment_method STRING,
+    promotion_code STRING,
+    quantity INT,
+    unit_price DECIMAL(12,2),
+    discount_amount DECIMAL(12,2),
+    product_cost DECIMAL(12,2)
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+LOCATION '/indomaret/raw/sales/';
+
+
+-- 2. Verifikasi data sudah terbaca
+-- Data harus terbaca langsung dari lokasi HDFS yang kita definisikan di atas.
+SELECT * FROM raw_sales LIMIT 5;
+
+
+-- 3. Verifikasi jumlah transaksi per tanggal
+SELECT tx_date, COUNT(DISTINCT transaction_id) AS total_transactions FROM raw_sales GROUP BY 1;
+
+
+-- 4. Query Transformasi (Menghitung Gross Profit)
+SELECT
+    -- 1. Date Key (Transformasi ke format INT YYYYMMDD)
+    CAST(YEAR(tx_date) * 10000 + MONTH(tx_date) * 100 + DAY(tx_date) AS INT) AS date_key,
+    store_id,
+    product_sku,
+    quantity,
+    unit_price,
+    -- 2. Derived Fact: Gross Profit (Sales - Qty * Cost - Discount)
+    ((quantity * unit_price) - discount_amount) - (quantity * product_cost) AS gross_profit_calculated,
+    transaction_id
+FROM
+    raw_sales
+LIMIT 5;
+
